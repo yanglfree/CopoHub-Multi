@@ -1,0 +1,98 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor and local agent state
+.idea/
+*.iml
+.vscode/
+.claude/settings.local.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.cer
+*.p7b
+*.p12
+*.mobileprovision
+*.keystore
+*.jks
+key.properties
+
+# Build output and caches
+build/
+dist/
+coverage/
+.cache/
+.tmp/
+
+# Flutter and Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub-cache/
+**/.pub/
+**/doc/api/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/.last_build_id
+**/local.properties
+app.*.symbols
+app.*.map.json
+
+# iOS and macOS
+**/Pods/
+**/.symlinks/
+**/DerivedData/
+**/xcuserdata/
+**/Flutter/Flutter.podspec
+**/Flutter/Generated.xcconfig
+**/Flutter/ephemeral/
+**/Runner/GeneratedPluginRegistrant.*
+
+# Android
+**/.gradle/
+**/captures/
+**/.cxx/
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# HarmonyOS
+**/oh_modules/
+**/node_modules/
+**/.hvigor/
+**/.test/
+**/BuildProfile.ets
+**/oh-package-lock.json5
+**/src/main/resources/rawfile/flutter_assets/
+**/libs/arm64-v8a/libapp.so
+**/libs/arm64-v8a/libflutter.so
+**/libs/arm64-v8a/libvmservice_snapshot.so
+flutter/ohos/build-profile.json5
+
+# JavaScript and web
+node_modules/
+.next/
+.nuxt/
+.svelte-kit/
+.vercel/
+.turbo/
+out/
+
+# Python and backend
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/

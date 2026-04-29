@@ -1,0 +1,57 @@
+name: copohub
+description: "CopoHub - GitHub client for HarmonyOS & iOS"
+publish_to: 'none'
+version: 1.4.0+1004000
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+
+  # Routing
+  go_router: ^14.8.1
+
+  # HTTP
+  dio: ^5.8.0+1
+
+  # Local Storage
+  shared_preferences: ^2.3.3
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Markdown & Code Highlight
+  flutter_markdown: ^0.7.6+1
+  highlight: ^0.7.0
+  flutter_highlight: ^0.7.0
+
+  # Image
+  cached_network_image: ^3.4.1
+
+  # WebView (OAuth login)
+  webview_flutter: ^4.8.0
+
+  # Utilities
+  # Flutter 3.32.5 resolves 0.20.2, while Flutter-OH 3.22 resolves 0.19.0.
+  intl: '>=0.19.0 <0.21.0'
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.3
+  path_provider: ^2.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/ic_icon.png

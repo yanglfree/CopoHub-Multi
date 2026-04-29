@@ -1,0 +1,476 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../api/github_api_client.dart';
+
+/// Issue detail page — mirrors HarmonyOS IssueDetailView.
+/// Shows issue body, labels, assignees, and comments thread.
+class IssueDetailPage extends StatefulWidget {
+  const IssueDetailPage({
+    super.key,
+    required this.owner,
+    required this.repo,
+    required this.number,
+  });
+  final String owner;
+  final String repo;
+  final int number;
+
+  @override
+  State<IssueDetailPage> createState() => _IssueDetailPageState();
+}
+
+class _IssueDetailPageState extends State<IssueDetailPage> {
+  final _api = GitHubApiClient.instance;
+
+  Map<String, dynamic>? _issue;
+  bool _issueLoading = true;
+  String _issueError = '';
+
+  List<Map<String, dynamic>> _comments = [];
+  bool _commentsLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadIssue();
+    _loadComments();
+  }
+
+  Future<void> _loadIssue() async {
+    setState(() {
+      _issueLoading = true;
+      _issueError = '';
+    });
+    final r = await _api.getIssue(widget.owner, widget.repo, widget.number);
+    if (!mounted) return;
+    if (r.isSuccess) {
+      setState(() {
+        _issue = r.data;
+        _issueLoading = false;
+      });
+    } else {
+      setState(() {
+        _issueError = r.message ?? '获取 Issue 详情失败';
+        _issueLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadComments() async {
+    setState(() => _commentsLoading = true);
+    final r =
+        await _api.getIssueComments(widget.owner, widget.repo, widget.number);
+    if (!mounted) return;
+    if (r.isSuccess) {
+      setState(() {
+        _comments = r.data ?? [];
+        _commentsLoading = false;
+      });
+    } else {
+      setState(() => _commentsLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final issue = _issue;
+    final isOpen = (issue?['state'] as String? ?? 'open') == 'open';
+    final isPR = issue?['pull_request'] != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          isPR ? 'Pull Request #${widget.number}' : 'Issue #${widget.number}',
+          style: const TextStyle(fontSize: 15),
+        ),
+      ),
+      body: _issueLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _issueError.isNotEmpty
+              ? _ErrorRetry(message: _issueError, onRetry: _loadIssue)
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    await Future.wait([_loadIssue(), _loadComments()]);
+                  },
+                  child: ListView(
+                    children: [
+                      // ── Issue header ───────────────────────────────────────
+                      _IssueHeader(
+                        issue: issue!,
+                        isOpen: isOpen,
+                        onUserTap: (login) =>
+                            context.push('/user/$login'),
+                      ),
+                      // ── Comments ───────────────────────────────────────────
+                      Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Text(
+                          '评论 (${_comments.length})',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      if (_commentsLoading)
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (_comments.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Center(
+                            child: Text('暂无评论',
+                                style: TextStyle(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant)),
+                          ),
+                        )
+                      else
+                        ..._comments.map((c) => _CommentTile(
+                              comment: c,
+                              onUserTap: (login) =>
+                                  context.push('/user/$login'),
+                            )),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+    );
+  }
+}
+
+// ── Issue header ──────────────────────────────────────────────────────────────
+
+class _IssueHeader extends StatelessWidget {
+  const _IssueHeader({
+    required this.issue,
+    required this.isOpen,
+    required this.onUserTap,
+  });
+  final Map<String, dynamic> issue;
+  final bool isOpen;
+  final void Function(String) onUserTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final title = issue['title'] as String? ?? '';
+    final body = issue['body'] as String? ?? '';
+    final user = issue['user'] as Map<String, dynamic>? ?? {};
+    final login = user['login'] as String? ?? '';
+    final avatar = user['avatar_url'] as String? ?? '';
+    final createdAt = issue['created_at'] as String? ?? '';
+    final labels = (issue['labels'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final assignees = (issue['assignees'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final comments = issue['comments'] as int? ?? 0;
+
+    return Card(
+      margin: const EdgeInsets.all(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title + state badge
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                ),
+                const SizedBox(width: 8),
+                _StateBadge(isOpen: isOpen),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // Author + date
+            InkWell(
+              onTap: login.isNotEmpty ? () => onUserTap(login) : null,
+              borderRadius: BorderRadius.circular(6),
+              child: Row(
+                children: [
+                  if (avatar.isNotEmpty)
+                    ClipOval(
+                      child: CachedNetworkImage(
+                        imageUrl: avatar,
+                        width: 20,
+                        height: 20,
+                        placeholder: (_, __) => Container(
+                            width: 20,
+                            height: 20,
+                            color: cs.surfaceContainerHighest),
+                        errorWidget: (_, __, ___) =>
+                            const Icon(Icons.account_circle, size: 20),
+                      ),
+                    ),
+                  const SizedBox(width: 6),
+                  Text(login,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: cs.primary)),
+                  const SizedBox(width: 6),
+                  Text(_fmtDate(createdAt),
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            // Labels
+            if (labels.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: labels.map((l) {
+                  final hex = l['color'] as String? ?? 'e0e0e0';
+                  final bgColor = Color(
+                      int.tryParse('0xFF$hex') ?? 0xFFe0e0e0);
+                  final brightness = ThemeData.estimateBrightnessForColor(bgColor);
+                  final fgColor = brightness == Brightness.dark
+                      ? Colors.white
+                      : Colors.black;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      l['name'] as String? ?? '',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: fgColor),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+            // Assignees
+            if (assignees.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text('指派给: ',
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurfaceVariant)),
+                  ...assignees.take(5).map((a) {
+                    final aLogin = a['login'] as String? ?? '';
+                    final aAvatar = a['avatar_url'] as String? ?? '';
+                    return GestureDetector(
+                      onTap: aLogin.isNotEmpty
+                          ? () => onUserTap(aLogin)
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Tooltip(
+                          message: aLogin,
+                          child: ClipOval(
+                            child: CachedNetworkImage(
+                              imageUrl: aAvatar,
+                              width: 20,
+                              height: 20,
+                              placeholder: (_, __) => Container(
+                                  width: 20,
+                                  height: 20,
+                                  color: cs.surfaceContainerHighest),
+                              errorWidget: (_, __, ___) =>
+                                  const Icon(Icons.account_circle, size: 20),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ],
+            // Body
+            if (body.isNotEmpty) ...[
+              const Divider(height: 20),
+              SelectableText(
+                body,
+                style: const TextStyle(fontSize: 13, height: 1.5),
+              ),
+            ],
+            // Comment count
+            const Divider(height: 20),
+            Row(
+              children: [
+                const Icon(Icons.comment_outlined, size: 14),
+                const SizedBox(width: 4),
+                Text('$comments 条评论',
+                    style: TextStyle(
+                        fontSize: 12, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _fmtDate(String iso) {
+    if (iso.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      return '${dt.year}-${_p(dt.month)}-${_p(dt.day)}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  static String _p(int v) => v.toString().padLeft(2, '0');
+}
+
+class _StateBadge extends StatelessWidget {
+  const _StateBadge({required this.isOpen});
+  final bool isOpen;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: isOpen
+              ? const Color(0xFF1a7f37)
+              : const Color(0xFF8250df),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+                isOpen
+                    ? Icons.circle_outlined
+                    : Icons.check_circle_outlined,
+                size: 12,
+                color: Colors.white),
+            const SizedBox(width: 4),
+            Text(isOpen ? 'Open' : 'Closed',
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white)),
+          ],
+        ),
+      );
+}
+
+// ── Comment tile ──────────────────────────────────────────────────────────────
+
+class _CommentTile extends StatelessWidget {
+  const _CommentTile({required this.comment, required this.onUserTap});
+  final Map<String, dynamic> comment;
+  final void Function(String) onUserTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final user = comment['user'] as Map<String, dynamic>? ?? {};
+    final login = user['login'] as String? ?? '';
+    final avatar = user['avatar_url'] as String? ?? '';
+    final body = comment['body'] as String? ?? '';
+    final createdAt = comment['created_at'] as String? ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Author header
+              InkWell(
+                onTap: login.isNotEmpty ? () => onUserTap(login) : null,
+                child: Row(
+                  children: [
+                    if (avatar.isNotEmpty)
+                      ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: avatar,
+                          width: 24,
+                          height: 24,
+                          placeholder: (_, __) => Container(
+                              width: 24,
+                              height: 24,
+                              color: cs.surfaceContainerHighest),
+                          errorWidget: (_, __, ___) =>
+                              const Icon(Icons.account_circle, size: 24),
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    Text(login,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_fmtDate(createdAt),
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant)),
+                    ),
+                  ],
+                ),
+              ),
+              if (body.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SelectableText(body,
+                    style: const TextStyle(fontSize: 13, height: 1.4)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _fmtDate(String iso) {
+    if (iso.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(iso).toLocal();
+      return '${dt.year}-${_p(dt.month)}-${_p(dt.day)}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  static String _p(int v) => v.toString().padLeft(2, '0');
+}
+
+// ── Error retry ───────────────────────────────────────────────────────────────
+
+class _ErrorRetry extends StatelessWidget {
+  const _ErrorRetry({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline,
+                size: 48, color: Theme.of(context).colorScheme.error),
+            const SizedBox(height: 12),
+            Text(message),
+            const SizedBox(height: 16),
+            OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+          ],
+        ),
+      );
+}
