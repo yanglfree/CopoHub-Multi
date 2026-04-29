@@ -48,6 +48,7 @@ class _DashboardPageState extends State<DashboardPage> {
           height: 64,
           selectedIndex: _selectedIndex,
           onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+          indicatorColor: isOhos ? Colors.transparent : null,
           destinations: _destinations,
         ),
       ),

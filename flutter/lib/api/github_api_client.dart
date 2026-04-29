@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import '../models/user.dart';
 import '../models/repository.dart';
+import '../models/github_org.dart';
+import '../models/pinned_repository.dart';
 import '../utils/constants.dart';
 import 'api_cache.dart';
 import 'api_response.dart';
@@ -399,6 +401,145 @@ class GitHubApiClient {
       return ApiResponse.ok(null);
     } on DioException catch (e) {
       return _handleDioError(e);
+    }
+  }
+
+  Future<ApiResponse<List<GithubOrg>>> getUserOrgs(String username) =>
+      _get<List<GithubOrg>>(
+        '/users/$username/orgs',
+        parser: (d) => (d as List<dynamic>)
+            .map((e) => GithubOrg.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        ttl: const Duration(minutes: 10),
+      );
+
+  Future<ApiResponse<List<Map<String, dynamic>>>> getUserEvents(
+    String username, {
+    int page = 1,
+    int perPage = 100,
+  }) =>
+      _get<List<Map<String, dynamic>>>(
+        '/users/$username/events',
+        params: {'page': page, 'per_page': perPage},
+        parser: (d) => (d as List<dynamic>)
+            .map((e) => e as Map<String, dynamic>)
+            .toList(),
+        ttl: const Duration(minutes: 5),
+      );
+
+  /// Authenticated user's own events, including private repo events.
+  Future<ApiResponse<List<Map<String, dynamic>>>> getMyEvents({
+    int page = 1,
+    int perPage = 100,
+  }) =>
+      _get<List<Map<String, dynamic>>>(
+        '/user/events',
+        params: {'page': page, 'per_page': perPage},
+        parser: (d) => (d as List<dynamic>)
+            .map((e) => e as Map<String, dynamic>)
+            .toList(),
+        ttl: const Duration(minutes: 5),
+      );
+
+  /// Top repos by star count for [username] via GraphQL.
+  Future<ApiResponse<List<PinnedRepository>>> getUserTopRepos(
+    String username, {
+    int count = 6,
+  }) async {
+    const query = r'''
+query($login: String!, $count: Int!) {
+  user(login: $login) {
+    repositories(
+      first: $count
+      ownerAffiliations: [OWNER]
+      orderBy: { field: STARGAZERS, direction: DESC }
+    ) {
+      nodes {
+        name
+        nameWithOwner
+        description
+        stargazerCount
+        forkCount
+        primaryLanguage { name color }
+      }
+    }
+  }
+}''';
+    final result =
+        await graphql(query, variables: {'login': username, 'count': count});
+    if (!result.isSuccess || result.data == null) return ApiResponse.ok([]);
+    try {
+      final user = result.data!['user'] as Map<String, dynamic>?;
+      if (user == null) return ApiResponse.ok([]);
+      final nodes =
+          ((user['repositories'] as Map)['nodes'] as List<dynamic>);
+      final repos = nodes
+          .whereType<Map<String, dynamic>>()
+          .map((n) {
+            final lang = n['primaryLanguage'] as Map<String, dynamic>?;
+            return PinnedRepository(
+              name: n['name'] as String? ?? '',
+              fullName: n['nameWithOwner'] as String? ?? '',
+              description: n['description'] as String? ?? '',
+              stargazerCount: n['stargazerCount'] as int? ?? 0,
+              forkCount: n['forkCount'] as int? ?? 0,
+              languageName: lang?['name'] as String? ?? '',
+              languageColor: lang?['color'] as String? ?? '',
+            );
+          })
+          .toList();
+      return ApiResponse.ok(repos);
+    } catch (_) {
+      return ApiResponse.ok([]);
+    }
+  }
+
+  Future<ApiResponse<List<PinnedRepository>>> getUserPinnedRepos(
+      String username) async {
+    const query = r'''
+query($login: String!) {
+  user(login: $login) {
+    pinnedItems(first: 6, types: [REPOSITORY]) {
+      nodes {
+        ... on Repository {
+          name
+          nameWithOwner
+          description
+          stargazerCount
+          forkCount
+          primaryLanguage { name color }
+        }
+      }
+    }
+  }
+}''';
+    final result = await graphql(query, variables: {'login': username});
+    if (!result.isSuccess || result.data == null) {
+      return ApiResponse.ok([]);
+    }
+    try {
+      final user = result.data!['user'] as Map<String, dynamic>?;
+      if (user == null) return ApiResponse.ok([]);
+      final nodes =
+          ((user['pinnedItems'] as Map)['nodes'] as List<dynamic>);
+      final repos = nodes
+          .whereType<Map<String, dynamic>>()
+          .map((n) {
+            final lang = n['primaryLanguage'] as Map<String, dynamic>?;
+            return PinnedRepository(
+              name: n['name'] as String? ?? '',
+              fullName: n['nameWithOwner'] as String? ?? '',
+              description: n['description'] as String? ?? '',
+              stargazerCount: n['stargazerCount'] as int? ?? 0,
+              forkCount: n['forkCount'] as int? ?? 0,
+              languageName: lang?['name'] as String? ?? '',
+              languageColor: lang?['color'] as String? ?? '',
+            );
+          })
+          .toList();
+      return ApiResponse.ok(repos);
+    } catch (_) {
+      return ApiResponse.ok([]);
     }
   }
 
@@ -865,9 +1006,91 @@ class GitHubApiClient {
     return ApiResponse.ok(stats);
   }
 
+  /// Fetch contribution data for [username] within an arbitrary date range.
+  /// Only uses GraphQL; returns failure if GraphQL is unavailable.
+  Future<ApiResponse<ContributionStatsData>> getUserContributionStatsByRange(
+    String username,
+    DateTime from,
+    DateTime to,
+  ) async {
+    final stats = await _getContributionViaGraphQLRange(username, from, to);
+    if (stats == null) {
+      return ApiResponse.fail('获取贡献数据失败');
+    }
+    return ApiResponse.ok(stats);
+  }
+
+  Future<ContributionStatsData?> _getContributionViaGraphQLRange(
+      String username, DateTime from, DateTime to) async {
+    const query = r'''
+query($login: String!, $from: DateTime!, $to: DateTime!) {
+  user(login: $login) {
+    contributionsCollection(from: $from, to: $to) {
+      contributionCalendar {
+        totalContributions
+        weeks {
+          contributionDays {
+            contributionCount
+            date
+          }
+        }
+      }
+    }
+  }
+}''';
+    try {
+      final response = await _dio.post<dynamic>(
+        'https://api.github.com/graphql',
+        data: {
+          'query': query,
+          'variables': {
+            'login': username,
+            'from': from.toUtc().toIso8601String(),
+            'to': to.toUtc().toIso8601String(),
+          },
+        },
+        options: Options(headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_accessToken',
+        }),
+      );
+      final data = response.data;
+      if (data is! Map || data['data'] == null) return null;
+      final userData = (data['data'] as Map)['user'] as Map?;
+      if (userData == null) return null;
+      final calendar = ((userData['contributionsCollection'] as Map)
+          ['contributionCalendar'] as Map);
+      final weeks = (calendar['weeks'] as List).map((w) => w as Map).toList();
+
+      final Map<String, int> byDate = {};
+      int total = 0;
+      int max = 0;
+      for (final week in weeks) {
+        for (final day in (week['contributionDays'] as List)) {
+          final d = day as Map;
+          final count = (d['contributionCount'] as int?) ?? 0;
+          final date = d['date'] as String? ?? '';
+          if (date.isNotEmpty && count > 0) {
+            byDate[date] = count;
+            total += count;
+            if (count > max) max = count;
+          }
+        }
+      }
+      return ContributionStatsData(
+        year: from.year,
+        contributionsByDate: byDate,
+        totalContributions: total,
+        maxContributions: max,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<ContributionStatsData?> _getContributionViaGraphQL(
       String username, int year) async {
-    final query = r'''
+    const query = r'''
 query($login: String!, $from: DateTime!, $to: DateTime!) {
   user(login: $login) {
     contributionsCollection(from: $from, to: $to) {

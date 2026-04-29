@@ -42,11 +42,15 @@ class _RepositoryPageState extends State<RepositoryPage>
   List<Map<String, dynamic>> _branches = [];
 
   late final TabController _tab;
+  late final List<int> _tabScrollResetVersions;
+  int _activeTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 5, vsync: this);
+    _tabScrollResetVersions = List<int>.filled(_tab.length, 0);
+    _tab.addListener(_handleTabChanged);
     if (widget.initialRepo != null) {
       _repository = widget.initialRepo;
       _starCount = widget.initialRepo!.stargazersCount;
@@ -58,8 +62,17 @@ class _RepositoryPageState extends State<RepositoryPage>
 
   @override
   void dispose() {
+    _tab.removeListener(_handleTabChanged);
     _tab.dispose();
     super.dispose();
+  }
+
+  void _handleTabChanged() {
+    if (_tab.index == _activeTabIndex) return;
+    setState(() {
+      _activeTabIndex = _tab.index;
+      _tabScrollResetVersions[_activeTabIndex]++;
+    });
   }
 
   Future<void> _loadRepo() async {
@@ -218,19 +231,28 @@ class _RepositoryPageState extends State<RepositoryPage>
               _ReadmeTab(
                   owner: widget.owner,
                   repo: widget.repo,
-                  defaultBranch: repo.defaultBranch),
+                  defaultBranch: repo.defaultBranch,
+                  scrollResetVersion: _tabScrollResetVersions[0]),
               _CodeTab(
                   owner: widget.owner,
                   repo: widget.repo,
                   defaultBranch: repo.defaultBranch,
-                  branches: _branches),
-              _IssuesTab(owner: widget.owner, repo: widget.repo),
+                  branches: _branches,
+                  scrollResetVersion: _tabScrollResetVersions[1]),
+              _IssuesTab(
+                  owner: widget.owner,
+                  repo: widget.repo,
+                  scrollResetVersion: _tabScrollResetVersions[2]),
               _CommitsTab(
                   owner: widget.owner,
                   repo: widget.repo,
                   defaultBranch: repo.defaultBranch,
-                  branches: _branches),
-              _ReleasesTab(owner: widget.owner, repo: widget.repo),
+                  branches: _branches,
+                  scrollResetVersion: _tabScrollResetVersions[3]),
+              _ReleasesTab(
+                  owner: widget.owner,
+                  repo: widget.repo,
+                  scrollResetVersion: _tabScrollResetVersions[4]),
             ],
           ),
         ),
@@ -516,10 +538,12 @@ class _ReadmeTab extends StatefulWidget {
     required this.owner,
     required this.repo,
     required this.defaultBranch,
+    required this.scrollResetVersion,
   });
   final String owner;
   final String repo;
   final String defaultBranch;
+  final int scrollResetVersion;
 
   @override
   State<_ReadmeTab> createState() => _ReadmeTabState();
@@ -595,6 +619,9 @@ class _ReadmeTabState extends State<_ReadmeTab>
       );
     }
     return Markdown(
+      key: PageStorageKey<String>(
+        'repository-readme-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
+      ),
       data: _content,
       selectable: true,
       padding: const EdgeInsets.all(16),
@@ -615,11 +642,13 @@ class _CodeTab extends StatefulWidget {
     required this.repo,
     required this.defaultBranch,
     required this.branches,
+    required this.scrollResetVersion,
   });
   final String owner;
   final String repo;
   final String defaultBranch;
   final List<Map<String, dynamic>> branches;
+  final int scrollResetVersion;
 
   @override
   State<_CodeTab> createState() => _CodeTabState();
@@ -834,6 +863,9 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
                   : _items.isEmpty
                       ? Center(child: Text(l10n.noFiles))
                       : ListView.separated(
+                          key: PageStorageKey<String>(
+                            'repository-code-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
+                          ),
                           padding: EdgeInsets.zero,
                           itemCount: _items.length,
                           separatorBuilder: (_, __) =>
@@ -857,7 +889,19 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
                               trailing: isDir
                                   ? const Icon(Icons.chevron_right, size: 16)
                                   : null,
-                              onTap: isDir ? () => _navigateInto(item) : null,
+                              onTap: isDir
+                                  ? () => _navigateInto(item)
+                                  : () => context.push(
+                                        '/file-viewer',
+                                        extra: {
+                                          'owner': widget.owner,
+                                          'repo': widget.repo,
+                                          'path':
+                                              item['path'] as String? ?? name,
+                                          'branch': _selectedBranch,
+                                          'fileName': name,
+                                        },
+                                      ),
                             );
                           },
                         ),
@@ -914,9 +958,14 @@ class _PathEntry {
 // ── Issues tab ────────────────────────────────────────────────────────────────
 
 class _IssuesTab extends StatefulWidget {
-  const _IssuesTab({required this.owner, required this.repo});
+  const _IssuesTab({
+    required this.owner,
+    required this.repo,
+    required this.scrollResetVersion,
+  });
   final String owner;
   final String repo;
+  final int scrollResetVersion;
 
   @override
   State<_IssuesTab> createState() => _IssuesTabState();
@@ -1036,6 +1085,9 @@ class _IssuesTabState extends State<_IssuesTab>
                       : RefreshIndicator(
                           onRefresh: () => _load(refresh: true),
                           child: ListView.separated(
+                            key: PageStorageKey<String>(
+                              'repository-issues-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
+                            ),
                             padding: EdgeInsets.zero,
                             itemCount: _issues.length + (_hasMore ? 1 : 0),
                             separatorBuilder: (_, __) =>
@@ -1183,11 +1235,13 @@ class _CommitsTab extends StatefulWidget {
     required this.repo,
     required this.defaultBranch,
     required this.branches,
+    required this.scrollResetVersion,
   });
   final String owner;
   final String repo;
   final String defaultBranch;
   final List<Map<String, dynamic>> branches;
+  final int scrollResetVersion;
 
   @override
   State<_CommitsTab> createState() => _CommitsTabState();
@@ -1367,6 +1421,9 @@ class _CommitsTabState extends State<_CommitsTab>
                       : RefreshIndicator(
                           onRefresh: () => _load(refresh: true),
                           child: ListView.separated(
+                            key: PageStorageKey<String>(
+                              'repository-commits-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
+                            ),
                             padding: EdgeInsets.zero,
                             itemCount: _commits.length + (_hasMore ? 1 : 0),
                             separatorBuilder: (_, __) =>
@@ -1492,9 +1549,14 @@ class _CommitTile extends StatelessWidget {
 // ── Releases tab ──────────────────────────────────────────────────────────────
 
 class _ReleasesTab extends StatefulWidget {
-  const _ReleasesTab({required this.owner, required this.repo});
+  const _ReleasesTab({
+    required this.owner,
+    required this.repo,
+    required this.scrollResetVersion,
+  });
   final String owner;
   final String repo;
+  final int scrollResetVersion;
 
   @override
   State<_ReleasesTab> createState() => _ReleasesTabState();
@@ -1607,6 +1669,9 @@ class _ReleasesTabState extends State<_ReleasesTab>
           child: RefreshIndicator(
             onRefresh: _load,
             child: ListView.separated(
+              key: PageStorageKey<String>(
+                'repository-releases-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
+              ),
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
               itemCount: _releases.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),

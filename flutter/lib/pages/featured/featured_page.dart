@@ -46,7 +46,11 @@ class _FeaturedPageState extends State<FeaturedPage> {
 
   static String _todayStr() {
     final n = DateTime.now();
-    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+    return _formatDate(n);
+  }
+
+  static String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -131,9 +135,27 @@ class _FeaturedPageState extends State<FeaturedPage> {
     final current = DateTime.tryParse(_selectedDate) ?? DateTime.now();
     final next = current.add(Duration(days: delta));
     if (next.isAfter(DateTime.now())) return;
+    _setDate(next);
+  }
+
+  Future<void> _pickDate() async {
+    final today = DateTime.now();
+    final current = DateTime.tryParse(_selectedDate) ?? today;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current.isAfter(today) ? today : current,
+      firstDate: DateTime(2020),
+      lastDate: today,
+    );
+    if (picked == null || !mounted) return;
+    _setDate(picked);
+  }
+
+  void _setDate(DateTime date) {
+    final nextDate = _formatDate(date);
+    if (_selectedDate == nextDate) return;
     setState(() {
-      _selectedDate =
-          '${next.year}-${next.month.toString().padLeft(2, '0')}-${next.day.toString().padLeft(2, '0')}';
+      _selectedDate = nextDate;
       _trending = [];
       _report = null;
     });
@@ -223,6 +245,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
                       reportError: _reportError,
                       onPrevDate: () => _changeDate(-1),
                       onNextDate: () => _changeDate(1),
+                      onPickDate: _pickDate,
                       onSegmentChanged: _switchSegment,
                       onLanguageChanged: (l) {
                         setState(() {
@@ -329,8 +352,7 @@ class _TopTabItem extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight:
-                      selected ? FontWeight.w700 : FontWeight.w400,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                   color: selected ? cs.primary : cs.onSurfaceVariant,
                 ),
               ),
@@ -359,6 +381,7 @@ class _GitHubTab extends StatelessWidget {
     required this.reportError,
     required this.onPrevDate,
     required this.onNextDate,
+    required this.onPickDate,
     required this.onSegmentChanged,
     required this.onLanguageChanged,
     required this.onSinceChanged,
@@ -379,6 +402,7 @@ class _GitHubTab extends StatelessWidget {
   final String reportError;
   final VoidCallback onPrevDate;
   final VoidCallback onNextDate;
+  final VoidCallback onPickDate;
   final void Function(int) onSegmentChanged;
   final void Function(String) onLanguageChanged;
   final void Function(String) onSinceChanged;
@@ -391,8 +415,10 @@ class _GitHubTab extends StatelessWidget {
       children: [
         _DatePickerHeader(
           date: date,
+          since: since,
           onPrev: onPrevDate,
           onNext: onNextDate,
+          onTap: onPickDate,
         ),
         _SegmentControl(
           selected: segment,
@@ -428,12 +454,16 @@ class _GitHubTab extends StatelessWidget {
 class _DatePickerHeader extends StatelessWidget {
   const _DatePickerHeader({
     required this.date,
+    required this.since,
     required this.onPrev,
     required this.onNext,
+    required this.onTap,
   });
   final String date;
+  final String since;
   final VoidCallback onPrev;
   final VoidCallback onNext;
+  final VoidCallback onTap;
 
   bool _isToday() {
     final today = DateTime.now();
@@ -445,7 +475,17 @@ class _DatePickerHeader extends StatelessWidget {
   }
 
   String _displayDate() {
-    if (_isToday()) return '今天';
+    if (_isToday()) {
+      switch (since) {
+        case 'weekly':
+          return '本周';
+        case 'monthly':
+          return '本月';
+        case 'daily':
+        default:
+          return '今天';
+      }
+    }
     try {
       final dt = DateTime.parse(date);
       return '${dt.year}年${dt.month.toString().padLeft(2, '0')}月${dt.day.toString().padLeft(2, '0')}日';
@@ -462,29 +502,39 @@ class _DatePickerHeader extends StatelessWidget {
       color: cs.surfaceContainer,
       child: Row(
         children: [
-          IconButton(
-              icon: const Icon(Icons.chevron_left), onPressed: onPrev),
+          IconButton(icon: const Icon(Icons.chevron_left), onPressed: onPrev),
           Expanded(
             child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _displayDate(),
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _displayDate(),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_drop_down,
+                            size: 18, color: cs.onSurfaceVariant),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.arrow_drop_down,
-                      size: 18, color: cs.onSurfaceVariant),
-                ],
+                ),
               ),
             ),
           ),
           IconButton(
             icon: Icon(
               Icons.chevron_right,
-              color: _isToday() ? cs.onSurface.withOpacity(0.3) : null,
+              color: _isToday() ? cs.onSurface.withValues(alpha: 0.3) : null,
             ),
             onPressed: _isToday() ? null : onNext,
           ),
@@ -560,9 +610,7 @@ class _SegBtn extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon,
-                  size: 15,
-                  color: active ? Colors.white : cs.onSurface),
+              Icon(icon, size: 15, color: active ? Colors.white : cs.onSurface),
               const SizedBox(width: 4),
               Text(
                 label,
@@ -617,21 +665,10 @@ class _TrendingView extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: language.isEmpty ? '' : language,
-                    isExpanded: true,
-                    hint: const Text('语言', style: TextStyle(fontSize: 13)),
-                    items: [
-                      const DropdownMenuItem(value: '', child: Text('全部语言')),
-                      ...languages.map((l) => DropdownMenuItem(
-                            value: l,
-                            child: Text(l,
-                                style: const TextStyle(fontSize: 13)),
-                          )),
-                    ],
-                    onChanged: (v) => onLanguageChanged(v ?? ''),
-                  ),
+                child: _LanguageMenu(
+                  selectedLanguage: language,
+                  languages: languages,
+                  onChanged: onLanguageChanged,
                 ),
               ),
               const SizedBox(width: 8),
@@ -672,6 +709,90 @@ class _TrendingView extends StatelessWidget {
                         ),
         ),
       ],
+    );
+  }
+}
+
+class _LanguageMenu extends StatelessWidget {
+  const _LanguageMenu({
+    required this.selectedLanguage,
+    required this.languages,
+    required this.onChanged,
+  });
+
+  final String selectedLanguage;
+  final List<String> languages;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final label = selectedLanguage.isEmpty ? '全部语言' : selectedLanguage;
+    final menuLanguages =
+        selectedLanguage.isNotEmpty && !languages.contains(selectedLanguage)
+            ? [selectedLanguage, ...languages]
+            : languages;
+
+    return PopupMenuButton<String>(
+      tooltip: '选择语言',
+      initialValue: selectedLanguage,
+      onSelected: onChanged,
+      itemBuilder: (context) => [
+        _languageItem(context, value: '', label: '全部语言'),
+        ...menuLanguages.map(
+          (language) => _languageItem(
+            context,
+            value: language,
+            label: language,
+          ),
+        ),
+      ],
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: cs.outlineVariant),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _languageItem(
+    BuildContext context, {
+    required String value,
+    required String label,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final selected = selectedLanguage == value;
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+          if (selected) Icon(Icons.check, size: 18, color: cs.primary),
+        ],
+      ),
     );
   }
 }
@@ -738,8 +859,7 @@ class _TrendingCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (item.rankDiff != 0)
-                        _RankDelta(delta: item.rankDiff),
+                      if (item.rankDiff != 0) _RankDelta(delta: item.rankDiff),
                     ],
                   ),
                   if (item.description.isNotEmpty) ...[
@@ -761,8 +881,7 @@ class _TrendingCard extends StatelessWidget {
                       const Icon(Icons.star_border, size: 13),
                       const SizedBox(width: 2),
                       Text(_fmt(item.stars),
-                          style:
-                              Theme.of(context).textTheme.bodySmall),
+                          style: Theme.of(context).textTheme.bodySmall),
                       if (item.starsDelta > 0) ...[
                         const SizedBox(width: 4),
                         Text(
@@ -778,8 +897,7 @@ class _TrendingCard extends StatelessWidget {
                       const Icon(Icons.fork_right, size: 13),
                       const SizedBox(width: 2),
                       Text(_fmt(item.forks),
-                          style:
-                              Theme.of(context).textTheme.bodySmall),
+                          style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ],
@@ -839,16 +957,14 @@ class _LangDot extends StatelessWidget {
             width: 10,
             height: 10,
             decoration: BoxDecoration(
-              color: Color(int.tryParse(
-                      Constants.getLanguageColor(language)
-                          .replaceFirst('#', '0xFF')) ??
+              color: Color(int.tryParse(Constants.getLanguageColor(language)
+                      .replaceFirst('#', '0xFF')) ??
                   0xFF8b949e),
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 4),
-          Text(language,
-              style: Theme.of(context).textTheme.bodySmall),
+          Text(language, style: Theme.of(context).textTheme.bodySmall),
         ],
       );
 }
@@ -911,14 +1027,11 @@ class _ReportView extends StatelessWidget {
             runSpacing: 4,
             children: topics
                 .map((t) => Chip(
-                      label: Text(t,
-                          style: const TextStyle(fontSize: 12)),
+                      label: Text(t, style: const TextStyle(fontSize: 12)),
                       padding: EdgeInsets.zero,
-                      materialTapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      backgroundColor:
+                          Theme.of(context).colorScheme.primaryContainer,
                     ))
                 .toList(),
           ),
@@ -936,13 +1049,11 @@ class _ReportView extends StatelessWidget {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: langSummaries.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(width: 8),
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, i) {
                 final entry = langSummaries[i];
                 return _LanguageCard(
-                    language: entry.key,
-                    summary: entry.value as String? ?? '');
+                    language: entry.key, summary: entry.value as String? ?? '');
               },
             ),
           ),
@@ -971,8 +1082,7 @@ class _LanguageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final color = Color(int.tryParse(
-            Constants.getLanguageColor(language)
-                .replaceFirst('#', '0xFF')) ??
+            Constants.getLanguageColor(language).replaceFirst('#', '0xFF')) ??
         0xFF8b949e);
     return Container(
       width: 160,
@@ -980,8 +1090,7 @@ class _LanguageCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: color.withAlpha(80), width: 1.5),
+        border: Border.all(color: color.withAlpha(80), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -991,8 +1100,7 @@ class _LanguageCard extends StatelessWidget {
               Container(
                 width: 10,
                 height: 10,
-                decoration: BoxDecoration(
-                    color: color, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 6),
               Text(language,
@@ -1006,10 +1114,8 @@ class _LanguageCard extends StatelessWidget {
               summary,
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(height: 1.4),
+              style:
+                  Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.4),
             ),
           ),
         ],
@@ -1076,8 +1182,7 @@ class _TopRepoTile extends StatelessWidget {
                 ],
                 const Icon(Icons.star_border, size: 13),
                 const SizedBox(width: 2),
-                Text(_fmt(stars),
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text(_fmt(stars), style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ],
@@ -1116,22 +1221,17 @@ class _CopoHubTab extends StatelessWidget {
         itemBuilder: (context, i) {
           if (i == 0) {
             return Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
                   Text(
                     '由 CopoHub 编辑团队精心挑选',
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: cs.onSurfaceVariant),
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
                   const Spacer(),
                   Text(
                     '共 ${items.length} 个项目',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurfaceVariant),
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -1217,8 +1317,7 @@ class _CuratedCard extends StatelessWidget {
                         Text(
                           item.owner,
                           style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurfaceVariant),
+                              fontSize: 12, color: cs.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -1243,14 +1342,13 @@ class _CuratedCard extends StatelessWidget {
               if (item.curatorNote.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF0F7FF),
                     borderRadius: BorderRadius.circular(8),
                     border: const Border(
-                      left: BorderSide(
-                          color: Color(0xFF0969da), width: 3),
+                      left: BorderSide(color: Color(0xFF0969da), width: 3),
                     ),
                   ),
                   child: Row(
@@ -1299,8 +1397,8 @@ class _CuratedCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       _fmtStars(item.forks),
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                     ),
                   ],
                 ],
@@ -1337,8 +1435,7 @@ class _TypeTag extends StatelessWidget {
     }
 
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(4),
@@ -1346,9 +1443,7 @@ class _TypeTag extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: Colors.white),
+            fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white),
       ),
     );
   }
@@ -1367,8 +1462,7 @@ class _ErrorRetry extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.error_outline,
-                size: 48,
-                color: Theme.of(context).colorScheme.error),
+                size: 48, color: Theme.of(context).colorScheme.error),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
@@ -1386,8 +1480,8 @@ class _Empty extends StatelessWidget {
   Widget build(BuildContext context) => Center(
         child: Text(
           message,
-          style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
 }

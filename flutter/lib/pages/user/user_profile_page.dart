@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
 import '../../components/contribution/contribution_calendar.dart';
+import '../../models/github_org.dart';
+import '../../models/pinned_repository.dart';
 import '../../models/user.dart';
 import '../../models/repository.dart';
+import '../../models/user_activity.dart';
 import '../../services/auth_service.dart';
 import '../../services/share_service.dart';
 import '../../utils/constants.dart';
@@ -33,6 +36,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
   bool _reposHasMore = true;
   int _reposPage = 1;
 
+  List<GithubOrg> _orgs = [];
+  bool _orgsLoading = true;
+
+  List<PinnedRepository> _pinnedRepos = [];
+  bool _pinnedLoading = true;
+
+  UserActivitySummary? _activity;
+  bool _activityLoading = true;
+
   bool get _isCurrentUser =>
       AuthService.instance.currentUser?.login == widget.username;
 
@@ -57,7 +69,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
         _user = result.data;
         _userLoading = false;
       });
+      // 用户加载成功后并行拉取其他数据
       _loadRepos();
+      _loadOrgs();
+      _loadPinnedRepos();
+      _loadActivity();
     } else {
       setState(() {
         _userError = result.message ?? '加载失败';
@@ -104,6 +120,66 @@ class _UserProfilePageState extends State<UserProfilePage> {
       });
     } else {
       setState(() => _reposLoading = false);
+    }
+  }
+
+  Future<void> _loadOrgs() async {
+    setState(() => _orgsLoading = true);
+    final result = await _api.getUserOrgs(widget.username);
+    if (!mounted) return;
+    setState(() {
+      _orgs = result.data ?? [];
+      _orgsLoading = false;
+    });
+  }
+
+  Future<void> _loadPinnedRepos() async {
+    setState(() => _pinnedLoading = true);
+    final result = await _api.getUserPinnedRepos(widget.username);
+    if (!mounted) return;
+    setState(() {
+      _pinnedRepos = result.data ?? [];
+      _pinnedLoading = false;
+    });
+  }
+
+  Future<void> _loadActivity() async {
+    setState(() => _activityLoading = true);
+    final result = await _api.getUserEvents(widget.username, perPage: 100);
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      final events = result.data ?? [];
+      int commitCount = 0;
+      int repoCount = 0;
+      int prCount = 0;
+
+      for (final event in events) {
+        final type = event['type'] as String? ?? '';
+        final payload = event['payload'] as Map<String, dynamic>?;
+        switch (type) {
+          case 'PushEvent':
+            commitCount += (payload?['size'] as int? ?? 0);
+            break;
+          case 'CreateEvent':
+            if (payload?['ref_type'] == 'repository') repoCount++;
+            break;
+          case 'PullRequestEvent':
+            if (payload?['action'] == 'opened') prCount++;
+            break;
+        }
+      }
+
+      setState(() {
+        _activity = UserActivitySummary(
+          commitCount: commitCount,
+          repoCount: repoCount,
+          prCount: prCount,
+        );
+        _activityLoading = false;
+      });
+    } else {
+      setState(() => _activityLoading = false);
     }
   }
 
@@ -193,14 +269,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 repos: user.publicRepos,
                 followers: user.followers,
                 following: user.following,
-                onFollowersTap: () => context
-                    .push('/social/${widget.username}/followers'),
-                onFollowingTap: () => context
-                    .push('/social/${widget.username}/following'),
+                onFollowersTap: () =>
+                    context.push('/social/${widget.username}/followers'),
+                onFollowingTap: () =>
+                    context.push('/social/${widget.username}/following'),
               ),
             ),
 
             const SliverToBoxAdapter(child: Divider(height: 1)),
+
+            // Organizations（有数据时才显示）
+            if (!_orgsLoading && _orgs.isNotEmpty) ...[
+              SliverToBoxAdapter(child: _OrgRow(orgs: _orgs)),
+              const SliverToBoxAdapter(child: Divider(height: 1)),
+            ],
 
             // Contribution calendar
             SliverToBoxAdapter(
@@ -210,7 +292,26 @@ class _UserProfilePageState extends State<UserProfilePage> {
               ),
             ),
 
+            // Activity summary card
+            SliverToBoxAdapter(
+              child: _ActivitySummaryCard(
+                activity: _activity,
+                loading: _activityLoading,
+              ),
+            ),
+
             const SliverToBoxAdapter(child: Divider(height: 1)),
+
+            // Pinned repos carousel（有数据时才显示）
+            if (!_pinnedLoading && _pinnedRepos.isNotEmpty) ...[
+              SliverToBoxAdapter(
+                child: _PinnedReposCarousel(
+                  repos: _pinnedRepos,
+                  username: widget.username,
+                ),
+              ),
+              const SliverToBoxAdapter(child: Divider(height: 1)),
+            ],
 
             // Starred repos shortcut
             SliverToBoxAdapter(
@@ -227,8 +328,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             // Repos section header
             SliverToBoxAdapter(
               child: Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Text(
                   '公开仓库',
                   style: Theme.of(context)
@@ -250,8 +350,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           if (_reposHasMore) _loadRepos();
                           return const Padding(
                             padding: EdgeInsets.all(16),
-                            child:
-                                Center(child: CircularProgressIndicator()),
+                            child: Center(child: CircularProgressIndicator()),
                           );
                         }
                         final repo = _repos[i];
@@ -261,8 +360,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                               '/repository/${widget.username}/${repo.name}'),
                         );
                       },
-                      childCount:
-                          _repos.length + (_reposHasMore ? 1 : 0),
+                      childCount: _repos.length + (_reposHasMore ? 1 : 0),
                     ),
                   ),
           ],
@@ -272,7 +370,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 }
 
-// ── User header (avatar, bio, location, etc.) ─────────────────────────────────
+// ── User header ───────────────────────────────────────────────────────────────
 
 class _UserHeader extends StatelessWidget {
   const _UserHeader({
@@ -306,7 +404,6 @@ class _UserHeader extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Avatar
               ClipOval(
                 child: CachedNetworkImage(
                   imageUrl: user.avatarUrl,
@@ -321,7 +418,6 @@ class _UserHeader extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              // Follow button
               if (!isCurrentUser)
                 FilledButton.tonal(
                   onPressed: followLoading ? null : onFollow,
@@ -335,23 +431,19 @@ class _UserHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          // Name & login
           Text(
             user.name.isNotEmpty ? user.name : user.login,
-            style: const TextStyle(
-                fontWeight: FontWeight.w800, fontSize: 18),
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
           ),
           if (user.name.isNotEmpty)
             Text(user.login,
-                style: TextStyle(
-                    fontSize: 13, color: cs.onSurfaceVariant)),
-          // Bio
+                style:
+                    TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
           if (user.bio.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(user.bio,
                 style: const TextStyle(fontSize: 13, height: 1.4)),
           ],
-          // Meta (company / location / blog / email)
           const SizedBox(height: 6),
           Wrap(
             spacing: 12,
@@ -365,11 +457,9 @@ class _UserHeader extends StatelessWidget {
                     icon: Icons.location_on_outlined,
                     label: user.location),
               if (user.blog.isNotEmpty)
-                _MetaChip(
-                    icon: Icons.link_outlined, label: user.blog),
+                _MetaChip(icon: Icons.link_outlined, label: user.blog),
               if (user.email.isNotEmpty)
-                _MetaChip(
-                    icon: Icons.mail_outline, label: user.email),
+                _MetaChip(icon: Icons.mail_outline, label: user.email),
             ],
           ),
         ],
@@ -388,7 +478,9 @@ class _MetaChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        Icon(icon,
+            size: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
         const SizedBox(width: 3),
         Flexible(
           child: Text(
@@ -426,11 +518,11 @@ class _StatsBar extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: _StatItem(value: repos, label: '仓库', onTap: null)),
-        const _Divider(),
+        const _VerticalDivider(),
         Expanded(
             child: _StatItem(
                 value: followers, label: '粉丝', onTap: onFollowersTap)),
-        const _Divider(),
+        const _VerticalDivider(),
         Expanded(
             child: _StatItem(
                 value: following, label: '关注', onTap: onFollowingTap)),
@@ -456,14 +548,15 @@ class _StatItem extends StatelessWidget {
           children: [
             Text(
               _fmt(value),
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 18),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
             const SizedBox(height: 2),
             Text(label,
                 style: TextStyle(
                     fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                    color:
+                        Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         ),
       ),
@@ -474,11 +567,468 @@ class _StatItem extends StatelessWidget {
       n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 }
 
-class _Divider extends StatelessWidget {
-  const _Divider();
+class _VerticalDivider extends StatelessWidget {
+  const _VerticalDivider();
   @override
   Widget build(BuildContext context) => Container(
-      width: 1, height: 36, color: Theme.of(context).colorScheme.outlineVariant);
+      width: 1,
+      height: 36,
+      color: Theme.of(context).colorScheme.outlineVariant);
+}
+
+// ── Organizations row ─────────────────────────────────────────────────────────
+
+class _OrgRow extends StatelessWidget {
+  const _OrgRow({required this.orgs});
+  final List<GithubOrg> orgs;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          child: Text(
+            '所属组织',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.4,
+                ),
+          ),
+        ),
+        SizedBox(
+          height: 76,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: orgs.length,
+            itemBuilder: (context, i) => _OrgAvatar(org: orgs[i]),
+          ),
+        ),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+}
+
+class _OrgAvatar extends StatelessWidget {
+  const _OrgAvatar({required this.org});
+  final GithubOrg org;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () => context.push('/user/${org.login}'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: cs.outlineVariant, width: 1),
+              ),
+              child: ClipOval(
+                child: CachedNetworkImage(
+                  imageUrl: org.avatarUrl,
+                  width: 44,
+                  height: 44,
+                  placeholder: (_, __) =>
+                      Container(color: cs.surfaceContainerHighest),
+                  errorWidget: (_, __, ___) =>
+                      Icon(Icons.business, size: 22, color: cs.onSurfaceVariant),
+                ),
+              ),
+            ),
+            const SizedBox(height: 5),
+            SizedBox(
+              width: 52,
+              child: Text(
+                org.login,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 10, color: cs.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Activity summary card ─────────────────────────────────────────────────────
+
+class _ActivitySummaryCard extends StatelessWidget {
+  const _ActivitySummaryCard({
+    required this.activity,
+    required this.loading,
+  });
+  final UserActivitySummary? activity;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+            child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
+
+    if (activity == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              cs.primaryContainer.withValues(alpha: 0.55),
+              cs.secondaryContainer.withValues(alpha: 0.35),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+              color: cs.outlineVariant.withValues(alpha: 0.6), width: 1),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.insights_rounded, size: 16, color: cs.primary),
+                const SizedBox(width: 6),
+                Text(
+                  '近期动态',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '近90天',
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _ActivityMetric(
+                    value: activity!.commitCount,
+                    label: '提交',
+                    icon: Icons.commit_rounded,
+                    color: cs.primary,
+                  ),
+                ),
+                Container(
+                    width: 1, height: 40, color: cs.outlineVariant.withValues(alpha: 0.5)),
+                Expanded(
+                  child: _ActivityMetric(
+                    value: activity!.repoCount,
+                    label: '新仓库',
+                    icon: Icons.folder_special_outlined,
+                    color: cs.secondary,
+                  ),
+                ),
+                Container(
+                    width: 1, height: 40, color: cs.outlineVariant.withValues(alpha: 0.5)),
+                Expanded(
+                  child: _ActivityMetric(
+                    value: activity!.prCount,
+                    label: 'PR',
+                    icon: Icons.call_merge_rounded,
+                    color: cs.tertiary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityMetric extends StatelessWidget {
+  const _ActivityMetric({
+    required this.value,
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+  final int value;
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 17, color: color),
+        const SizedBox(height: 6),
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: value.toDouble()),
+          duration: const Duration(milliseconds: 1100),
+          curve: Curves.easeOutCubic,
+          builder: (context, v, _) => Text(
+            _fmt(v.round()),
+            style: const TextStyle(
+                fontWeight: FontWeight.w800, fontSize: 22, height: 1),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  static String _fmt(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+}
+
+// ── Pinned repos carousel ─────────────────────────────────────────────────────
+
+class _PinnedReposCarousel extends StatefulWidget {
+  const _PinnedReposCarousel(
+      {required this.repos, required this.username});
+  final List<PinnedRepository> repos;
+  final String username;
+
+  @override
+  State<_PinnedReposCarousel> createState() =>
+      _PinnedReposCarouselState();
+}
+
+class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(viewportFraction: 0.88);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          child: Row(
+            children: [
+              const Icon(Icons.push_pin_outlined, size: 15),
+              const SizedBox(width: 6),
+              Text(
+                '置顶仓库',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 148,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.repos.length,
+            onPageChanged: (i) => setState(() => _currentPage = i),
+            itemBuilder: (context, i) {
+              return AnimatedScale(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOut,
+                scale: _currentPage == i ? 1.0 : 0.94,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 3),
+                  child: _PinnedRepoCard(
+                    repo: widget.repos[i],
+                    onTap: () {
+                      final parts =
+                          widget.repos[i].fullName.split('/');
+                      if (parts.length == 2) {
+                        context.push(
+                            '/repository/${parts[0]}/${parts[1]}');
+                      }
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        // Page indicator dots
+        if (widget.repos.length > 1) ...[
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              widget.repos.length,
+              (i) => AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOut,
+                width: _currentPage == i ? 18 : 6,
+                height: 6,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(3),
+                  color: _currentPage == i
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context)
+                          .colorScheme
+                          .outlineVariant,
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+}
+
+class _PinnedRepoCard extends StatelessWidget {
+  const _PinnedRepoCard({required this.repo, required this.onTap});
+  final PinnedRepository repo;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final langColor = repo.languageColor.isNotEmpty
+        ? Color(int.tryParse(
+                repo.languageColor.replaceFirst('#', '0xFF')) ??
+            0xFF8b949e)
+        : cs.onSurfaceVariant;
+
+    return Material(
+      color: cs.surfaceContainer,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.book_outlined,
+                      size: 14, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      repo.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: cs.primary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              if (repo.description.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  repo.description,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(height: 1.4),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const Spacer(),
+              Row(
+                children: [
+                  if (repo.languageName.isNotEmpty) ...[
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: langColor,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(repo.languageName,
+                        style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(width: 12),
+                  ],
+                  Icon(Icons.star_border_rounded,
+                      size: 13, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 2),
+                  Text(_fmt(repo.stargazerCount),
+                      style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(width: 10),
+                  Icon(Icons.call_split_rounded,
+                      size: 13, color: cs.onSurfaceVariant),
+                  const SizedBox(width: 2),
+                  Text(_fmt(repo.forkCount),
+                      style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _fmt(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 }
 
 // ── Repo tile ─────────────────────────────────────────────────────────────────
@@ -496,7 +1046,8 @@ class _RepoTile extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 Expanded(
@@ -538,8 +1089,9 @@ class _RepoTile extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(repo.language,
-                                style:
-                                    Theme.of(context).textTheme.bodySmall),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall),
                             const SizedBox(width: 10),
                           ],
                           const Icon(Icons.star_border, size: 13),
@@ -550,7 +1102,8 @@ class _RepoTile extends StatelessWidget {
                           if (repo.fork) ...[
                             const SizedBox(width: 10),
                             Icon(Icons.fork_right,
-                                size: 13, color: cs.onSurfaceVariant),
+                                size: 13,
+                                color: cs.onSurfaceVariant),
                             Text(' Fork',
                                 style: TextStyle(
                                     fontSize: 11,
@@ -571,7 +1124,8 @@ class _RepoTile extends StatelessWidget {
                     ),
                     child: Text('Private',
                         style: TextStyle(
-                            fontSize: 10, color: cs.onSurfaceVariant)),
+                            fontSize: 10,
+                            color: cs.onSurfaceVariant)),
                   ),
               ],
             ),

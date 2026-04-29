@@ -313,6 +313,8 @@ class _DashboardShell extends StatelessWidget {
           selectedIndex: shell.currentIndex,
           onDestinationSelected: (i) =>
               shell.goBranch(i, initialLocation: i == shell.currentIndex),
+          // HarmonyOS 平台不显示选中指示器（pill 背景）
+          indicatorColor: isOhos ? Colors.transparent : null,
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),
