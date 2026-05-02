@@ -91,8 +91,8 @@ class AuthService extends ChangeNotifier {
     if (token.isNotEmpty && userJson.isNotEmpty) {
       try {
         _accessToken = token;
-        _currentUser = GithubUser.fromJson(
-            jsonDecode(userJson) as Map<String, dynamic>);
+        _currentUser =
+            GithubUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
         _api.setAccessToken(_accessToken);
         _setState(AuthState.loggedIn, user: _currentUser);
       } catch (e) {
@@ -212,6 +212,37 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       debugPrint('refreshCurrentUser failed: $e');
     }
+  }
+
+  Future<AuthResult> updateCurrentUserProfile({
+    String? name,
+    String? email,
+    String? blog,
+    String? twitterUsername,
+    String? company,
+    String? location,
+    bool? hireable,
+    String? bio,
+  }) async {
+    final result = await _api.updateCurrentUserProfile(
+      name: name,
+      email: email,
+      blog: blog,
+      twitterUsername: twitterUsername,
+      company: company,
+      location: location,
+      hireable: hireable,
+      bio: bio,
+    );
+    if (!result.isSuccess) {
+      return AuthResult.fail(result.message ?? '更新资料失败', error: result.error);
+    }
+
+    final user = result.data!;
+    _currentUser = user;
+    await _saveAuthInfo(_accessToken, user);
+    _setState(AuthState.loggedIn, user: user);
+    return AuthResult.ok(user);
   }
 
   /// Logout and clear all persisted auth info.

@@ -1,9 +1,11 @@
 import 'package:dio/dio.dart';
 import '../models/user.dart';
+import '../models/user_status.dart';
 import '../models/repository.dart';
 import '../models/github_org.dart';
 import '../models/pinned_repository.dart';
 import '../utils/constants.dart';
+import '../utils/api_error_message.dart';
 import 'api_cache.dart';
 import 'api_response.dart';
 import 'rate_limit_status.dart';
@@ -19,6 +21,7 @@ class ContributionStatsData {
     required this.maxContributions,
   });
   final int year;
+
   /// Map from date string (yyyy-MM-dd) to commit count.
   final Map<String, int> contributionsByDate;
   final int totalContributions;
@@ -164,8 +167,7 @@ class GitHubApiClient {
       return ApiResponse.ok(parser != null ? parser(body) : body as T);
     }
 
-    final cachedForEtag =
-        forceRefresh ? null : ApiCache.instance.get(cacheKey);
+    final cachedForEtag = forceRefresh ? null : ApiCache.instance.get(cacheKey);
 
     final future = _performGet(
       path: path,
@@ -200,9 +202,8 @@ class GitHubApiClient {
       final response = await _dio.get<dynamic>(
         path,
         queryParameters: params,
-        options: etag != null
-            ? Options(headers: {'If-None-Match': etag})
-            : null,
+        options:
+            etag != null ? Options(headers: {'If-None-Match': etag}) : null,
       );
 
       if (response.statusCode == 304 && cachedBody != null) {
@@ -233,7 +234,8 @@ class GitHubApiClient {
   }) async {
     try {
       final response = await _dio.post<dynamic>(path, data: data);
-      return ApiResponse.ok(parser != null ? parser(response.data) : response.data as T);
+      return ApiResponse.ok(
+          parser != null ? parser(response.data) : response.data as T);
     } on DioException catch (e) {
       return _handleDioError(e);
     }
@@ -247,7 +249,8 @@ class GitHubApiClient {
   }) async {
     try {
       final response = await _dio.put<dynamic>(path, data: data);
-      return ApiResponse.ok(parser != null ? parser(response.data) : response.data as T);
+      return ApiResponse.ok(
+          parser != null ? parser(response.data) : response.data as T);
     } on DioException catch (e) {
       return _handleDioError(e);
     }
@@ -260,7 +263,8 @@ class GitHubApiClient {
   }) async {
     try {
       final response = await _dio.delete<dynamic>(path);
-      return ApiResponse.ok(parser != null ? parser(response.data) : response.data as T);
+      return ApiResponse.ok(
+          parser != null ? parser(response.data) : response.data as T);
     } on DioException catch (e) {
       return _handleDioError(e);
     }
@@ -274,7 +278,8 @@ class GitHubApiClient {
   }) async {
     try {
       final response = await _dio.patch<dynamic>(path, data: data);
-      return ApiResponse.ok(parser != null ? parser(response.data) : response.data as T);
+      return ApiResponse.ok(
+          parser != null ? parser(response.data) : response.data as T);
     } on DioException catch (e) {
       return _handleDioError(e);
     }
@@ -309,15 +314,10 @@ class GitHubApiClient {
 
   ApiResponse<T> _handleDioError<T>(DioException e) {
     final statusCode = e.response?.statusCode;
-    String message;
-    if (e.response?.data is Map<String, dynamic>) {
-      final errorBody = e.response!.data as Map<String, dynamic>;
-      message = errorBody['message'] as String? ??
-          errorBody['error'] as String? ??
-          'HTTP $statusCode';
-    } else {
-      message = e.message ?? 'Network error';
-    }
+    final message = friendlyDioErrorMessage(
+      e,
+      fallback: statusCode == null ? '网络请求失败，请稍后重试' : '请求失败，请稍后重试',
+    );
 
     if (statusCode == 401 && _accessToken.isNotEmpty) {
       _notifyAuthInvalidation(_sessionExpiredMessage);
@@ -337,6 +337,43 @@ class GitHubApiClient {
         ttl: const Duration(seconds: 30),
         forceRefresh: forceRefresh,
       );
+
+  Future<ApiResponse<GithubUser>> updateCurrentUserProfile({
+    String? name,
+    String? email,
+    String? blog,
+    String? twitterUsername,
+    String? company,
+    String? location,
+    bool? hireable,
+    String? bio,
+  }) async {
+    final data = <String, dynamic>{};
+    if (name != null) data['name'] = name;
+    if (email != null) data['email'] = email;
+    if (blog != null) data['blog'] = blog;
+    if (twitterUsername != null) {
+      data['twitter_username'] =
+          twitterUsername.isEmpty ? null : twitterUsername;
+    }
+    if (company != null) data['company'] = company;
+    if (location != null) data['location'] = location;
+    if (hireable != null) data['hireable'] = hireable;
+    if (bio != null) data['bio'] = bio;
+
+    final result = await _patch<GithubUser>(
+      '/user',
+      data: data,
+      parser: (d) => GithubUser.fromJson(d as Map<String, dynamic>),
+    );
+    if (result.isSuccess && result.data != null) {
+      await ApiCache.instance.invalidate(ApiCache.keyFor('GET', '/user'));
+      await ApiCache.instance.invalidate(
+        ApiCache.keyFor('GET', '/users/${result.data!.login}'),
+      );
+    }
+    return result;
+  }
 
   Future<ApiResponse<GithubUser>> getUser(
     String username, {
@@ -375,12 +412,78 @@ class GitHubApiClient {
             .toList(),
       );
 
+  Future<ApiResponse<GithubUserStatus?>> getUserStatus(String username) async {
+    const query = r'''
+query($login: String!) {
+  user(login: $login) {
+    status {
+      emoji
+      message
+      indicatesLimitedAvailability
+      expiresAt
+      updatedAt
+      organization { login }
+    }
+  }
+}''';
+    final result = await graphql(query, variables: {'login': username});
+    if (!result.success || result.data == null) {
+      return ApiResponse.fail(result.error ?? '加载状态失败');
+    }
+    final user = result.data!['user'] as Map<String, dynamic>?;
+    final status = user?['status'] as Map<String, dynamic>?;
+    return ApiResponse<GithubUserStatus?>(
+      success: true,
+      data: status == null ? null : GithubUserStatus.fromJson(status),
+    );
+  }
+
+  Future<ApiResponse<GithubUserStatus?>> changeUserStatus({
+    String? emoji,
+    String? message,
+    bool? limitedAvailability,
+    String? expiresAt,
+    String? organizationId,
+  }) async {
+    const mutation = r'''
+mutation($input: ChangeUserStatusInput!) {
+  changeUserStatus(input: $input) {
+    status {
+      emoji
+      message
+      indicatesLimitedAvailability
+      expiresAt
+      updatedAt
+      organization { login }
+    }
+  }
+}''';
+    final input = <String, dynamic>{};
+    if (emoji != null) input['emoji'] = emoji.isEmpty ? null : emoji;
+    if (message != null) input['message'] = message.isEmpty ? null : message;
+    if (limitedAvailability != null) {
+      input['limitedAvailability'] = limitedAvailability;
+    }
+    if (expiresAt != null) input['expiresAt'] = expiresAt;
+    if (organizationId != null) input['organizationId'] = organizationId;
+
+    final result = await graphql(mutation, variables: {'input': input});
+    if (!result.success || result.data == null) {
+      return ApiResponse.fail(result.error ?? '更新状态失败');
+    }
+    final payload = result.data!['changeUserStatus'] as Map<String, dynamic>?;
+    final status = payload?['status'] as Map<String, dynamic>?;
+    return ApiResponse<GithubUserStatus?>(
+      success: true,
+      data: status == null ? null : GithubUserStatus.fromJson(status),
+    );
+  }
+
   Future<ApiResponse<bool>> checkUserFollowing(
     String username, {
     bool forceRefresh = false,
   }) =>
-      _checkExistence('/user/following/$username',
-          forceRefresh: forceRefresh);
+      _checkExistence('/user/following/$username', forceRefresh: forceRefresh);
 
   Future<ApiResponse<void>> followUser(String username) async {
     try {
@@ -421,9 +524,8 @@ class GitHubApiClient {
       _get<List<Map<String, dynamic>>>(
         '/users/$username/events',
         params: {'page': page, 'per_page': perPage},
-        parser: (d) => (d as List<dynamic>)
-            .map((e) => e as Map<String, dynamic>)
-            .toList(),
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
         ttl: const Duration(minutes: 5),
       );
 
@@ -435,9 +537,8 @@ class GitHubApiClient {
       _get<List<Map<String, dynamic>>>(
         '/user/events',
         params: {'page': page, 'per_page': perPage},
-        parser: (d) => (d as List<dynamic>)
-            .map((e) => e as Map<String, dynamic>)
-            .toList(),
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
         ttl: const Duration(minutes: 5),
       );
 
@@ -471,23 +572,19 @@ query($login: String!, $count: Int!) {
     try {
       final user = result.data!['user'] as Map<String, dynamic>?;
       if (user == null) return ApiResponse.ok([]);
-      final nodes =
-          ((user['repositories'] as Map)['nodes'] as List<dynamic>);
-      final repos = nodes
-          .whereType<Map<String, dynamic>>()
-          .map((n) {
-            final lang = n['primaryLanguage'] as Map<String, dynamic>?;
-            return PinnedRepository(
-              name: n['name'] as String? ?? '',
-              fullName: n['nameWithOwner'] as String? ?? '',
-              description: n['description'] as String? ?? '',
-              stargazerCount: n['stargazerCount'] as int? ?? 0,
-              forkCount: n['forkCount'] as int? ?? 0,
-              languageName: lang?['name'] as String? ?? '',
-              languageColor: lang?['color'] as String? ?? '',
-            );
-          })
-          .toList();
+      final nodes = ((user['repositories'] as Map)['nodes'] as List<dynamic>);
+      final repos = nodes.whereType<Map<String, dynamic>>().map((n) {
+        final lang = n['primaryLanguage'] as Map<String, dynamic>?;
+        return PinnedRepository(
+          name: n['name'] as String? ?? '',
+          fullName: n['nameWithOwner'] as String? ?? '',
+          description: n['description'] as String? ?? '',
+          stargazerCount: n['stargazerCount'] as int? ?? 0,
+          forkCount: n['forkCount'] as int? ?? 0,
+          languageName: lang?['name'] as String? ?? '',
+          languageColor: lang?['color'] as String? ?? '',
+        );
+      }).toList();
       return ApiResponse.ok(repos);
     } catch (_) {
       return ApiResponse.ok([]);
@@ -520,23 +617,19 @@ query($login: String!) {
     try {
       final user = result.data!['user'] as Map<String, dynamic>?;
       if (user == null) return ApiResponse.ok([]);
-      final nodes =
-          ((user['pinnedItems'] as Map)['nodes'] as List<dynamic>);
-      final repos = nodes
-          .whereType<Map<String, dynamic>>()
-          .map((n) {
-            final lang = n['primaryLanguage'] as Map<String, dynamic>?;
-            return PinnedRepository(
-              name: n['name'] as String? ?? '',
-              fullName: n['nameWithOwner'] as String? ?? '',
-              description: n['description'] as String? ?? '',
-              stargazerCount: n['stargazerCount'] as int? ?? 0,
-              forkCount: n['forkCount'] as int? ?? 0,
-              languageName: lang?['name'] as String? ?? '',
-              languageColor: lang?['color'] as String? ?? '',
-            );
-          })
-          .toList();
+      final nodes = ((user['pinnedItems'] as Map)['nodes'] as List<dynamic>);
+      final repos = nodes.whereType<Map<String, dynamic>>().map((n) {
+        final lang = n['primaryLanguage'] as Map<String, dynamic>?;
+        return PinnedRepository(
+          name: n['name'] as String? ?? '',
+          fullName: n['nameWithOwner'] as String? ?? '',
+          description: n['description'] as String? ?? '',
+          stargazerCount: n['stargazerCount'] as int? ?? 0,
+          forkCount: n['forkCount'] as int? ?? 0,
+          languageName: lang?['name'] as String? ?? '',
+          languageColor: lang?['color'] as String? ?? '',
+        );
+      }).toList();
       return ApiResponse.ok(repos);
     } catch (_) {
       return ApiResponse.ok([]);
@@ -647,8 +740,7 @@ query($login: String!) {
     String repo, {
     bool forceRefresh = false,
   }) =>
-      _checkExistence('/user/starred/$owner/$repo',
-          forceRefresh: forceRefresh);
+      _checkExistence('/user/starred/$owner/$repo', forceRefresh: forceRefresh);
 
   Future<ApiResponse<void>> starRepository(String owner, String repo) async {
     try {
@@ -661,8 +753,7 @@ query($login: String!) {
     }
   }
 
-  Future<ApiResponse<void>> unstarRepository(
-      String owner, String repo) async {
+  Future<ApiResponse<void>> unstarRepository(String owner, String repo) async {
     try {
       await _dio.delete<dynamic>('/user/starred/$owner/$repo');
       _boolCache['/user/starred/$owner/$repo'] =
@@ -699,9 +790,8 @@ query($login: String!) {
     return _get<List<Map<String, dynamic>>>(
       '/repos/$owner/$repo/commits',
       params: params,
-      parser: (d) => (d as List<dynamic>)
-          .map((e) => e as Map<String, dynamic>)
-          .toList(),
+      parser: (d) =>
+          (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
     );
   }
 
@@ -736,9 +826,8 @@ query($login: String!) {
     return _get<List<Map<String, dynamic>>>(
       '/repos/$owner/$repo/issues',
       params: params,
-      parser: (d) => (d as List<dynamic>)
-          .map((e) => e as Map<String, dynamic>)
-          .toList(),
+      parser: (d) =>
+          (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
     );
   }
 
@@ -764,9 +853,8 @@ query($login: String!) {
           'sort': 'created',
           'direction': 'asc',
         },
-        parser: (d) => (d as List<dynamic>)
-            .map((e) => e as Map<String, dynamic>)
-            .toList(),
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
       );
 
   // ── Releases ─────────────────────────────────────────────────────────────────────
@@ -780,9 +868,8 @@ query($login: String!) {
       _get<List<Map<String, dynamic>>>(
         '/repos/$owner/$repo/releases',
         params: {'page': page, 'per_page': perPage},
-        parser: (d) => (d as List<dynamic>)
-            .map((e) => e as Map<String, dynamic>)
-            .toList(),
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
       );
 
   // ── Branches & Tags ───────────────────────────────────────────────────────────────
@@ -797,9 +884,8 @@ query($login: String!) {
       _get<List<Map<String, dynamic>>>(
         '/repos/$owner/$repo/branches',
         params: {'page': page, 'per_page': perPage},
-        parser: (d) => (d as List<dynamic>)
-            .map((e) => e as Map<String, dynamic>)
-            .toList(),
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
         ttl: const Duration(minutes: 5),
         forceRefresh: forceRefresh,
       );
@@ -813,9 +899,8 @@ query($login: String!) {
       _get<List<Map<String, dynamic>>>(
         '/repos/$owner/$repo/tags',
         params: {'page': page, 'per_page': perPage},
-        parser: (d) => (d as List<dynamic>)
-            .map((e) => e as Map<String, dynamic>)
-            .toList(),
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
         ttl: const Duration(minutes: 5),
       );
 
@@ -835,6 +920,23 @@ query($login: String!) {
       params: params,
       parser: (d) => d,
       ttl: const Duration(minutes: 1),
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<ApiResponse<Map<String, dynamic>>> getRepositoryReadme(
+    String owner,
+    String repo, {
+    String? ref,
+    bool forceRefresh = false,
+  }) {
+    final params = <String, dynamic>{};
+    if (ref != null) params['ref'] = ref;
+    return _get<Map<String, dynamic>>(
+      '/repos/$owner/$repo/readme',
+      params: params,
+      parser: (d) => d as Map<String, dynamic>,
+      ttl: const Duration(minutes: 30),
       forceRefresh: forceRefresh,
     );
   }
@@ -893,9 +995,8 @@ query($login: String!) {
           'page': page,
           'per_page': perPage,
         },
-        parser: (d) => (d as List<dynamic>)
-            .map((e) => e as Map<String, dynamic>)
-            .toList(),
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
       );
 
   Future<ApiResponse<void>> markAllNotificationsRead() async {
@@ -980,8 +1081,7 @@ query($login: String!) {
       final data = response.data as Map<String, dynamic>;
       if (data.containsKey('errors')) {
         final errors = data['errors'] as List<dynamic>;
-        final errMsg =
-            errors.map((e) => (e as Map)['message']).join(', ');
+        final errMsg = errors.map((e) => (e as Map)['message']).join(', ');
         return ApiResponse.fail('GraphQL error: $errMsg');
       }
       return ApiResponse.ok(data['data'] as Map<String, dynamic>);
@@ -1058,8 +1158,8 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
       if (data is! Map || data['data'] == null) return null;
       final userData = (data['data'] as Map)['user'] as Map?;
       if (userData == null) return null;
-      final calendar = ((userData['contributionsCollection'] as Map)
-          ['contributionCalendar'] as Map);
+      final calendar = ((userData['contributionsCollection']
+          as Map)['contributionCalendar'] as Map);
       final weeks = (calendar['weeks'] as List).map((w) => w as Map).toList();
 
       final Map<String, int> byDate = {};
@@ -1126,11 +1226,9 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
       if (data is! Map || data['data'] == null) return null;
       final userData = (data['data'] as Map)['user'] as Map?;
       if (userData == null) return null;
-      final calendar = ((userData['contributionsCollection'] as Map)
-          ['contributionCalendar'] as Map);
-      final weeks = (calendar['weeks'] as List)
-          .map((w) => w as Map)
-          .toList();
+      final calendar = ((userData['contributionsCollection']
+          as Map)['contributionCalendar'] as Map);
+      final weeks = (calendar['weeks'] as List).map((w) => w as Map).toList();
 
       final Map<String, int> byDate = {};
       int total = 0;
@@ -1186,8 +1284,8 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
         final items = (resp.data['items'] as List?) ?? [];
         if (items.isEmpty) break;
         for (final item in items) {
-          final date = ((item['commit'] as Map)['committer'] as Map)['date']
-              as String?;
+          final date =
+              ((item['commit'] as Map)['committer'] as Map)['date'] as String?;
           if (date != null) {
             final key = date.substring(0, 10);
             byDate[key] = (byDate[key] ?? 0) + 1;
@@ -1252,8 +1350,7 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
       if (token != null && token.isNotEmpty) {
         return ApiResponse.ok(token);
       }
-      final errorDesc =
-          tokenData['error_description'] as String? ?? '令牌交换失败';
+      final errorDesc = tokenData['error_description'] as String? ?? '令牌交换失败';
       return ApiResponse.fail(errorDesc);
     } on DioException catch (e) {
       return ApiResponse.fail(e.message ?? '令牌交换网络错误');

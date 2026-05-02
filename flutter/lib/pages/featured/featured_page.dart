@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/copohub_api_client.dart';
 import '../../api/daily_api_client.dart';
+import '../../components/daily/daily_report_view.dart';
 import '../../models/copohub_curated_item.dart';
 import '../../models/trending_item.dart';
 import '../../utils/constants.dart';
@@ -478,12 +478,12 @@ class _DatePickerHeader extends StatelessWidget {
     if (_isToday()) {
       switch (since) {
         case 'weekly':
-          return '本周';
+          return formatDailyReportDateLabel(date, todayLabel: '本周');
         case 'monthly':
-          return '本月';
+          return formatDailyReportDateLabel(date, todayLabel: '本月');
         case 'daily':
         default:
-          return '今天';
+          return formatDailyReportDateLabel(date);
       }
     }
     try {
@@ -534,7 +534,7 @@ class _DatePickerHeader extends StatelessWidget {
           IconButton(
             icon: Icon(
               Icons.chevron_right,
-              color: _isToday() ? cs.onSurface.withValues(alpha: 0.3) : null,
+              color: _isToday() ? cs.onSurface.withAlpha(77) : null,
             ),
             onPressed: _isToday() ? null : onNext,
           ),
@@ -989,206 +989,7 @@ class _ReportView extends StatelessWidget {
     if (error.isNotEmpty) return _ErrorRetry(message: error, onRetry: onRetry);
     if (report == null) return const _Empty(message: '暂无报告数据');
 
-    final data = report!;
-    final summary = data['summary'] as String? ?? '';
-    final topics = (data['topics'] as List<dynamic>? ?? [])
-        .map((e) => e as String)
-        .toList();
-    final langSummaries =
-        (data['language_summaries'] as Map<String, dynamic>? ?? {})
-            .entries
-            .toList();
-    final topRepos = (data['top_repositories'] as List<dynamic>? ?? [])
-        .map((e) => e as Map<String, dynamic>)
-        .toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (summary.isNotEmpty) ...[
-          Text('摘要',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          MarkdownBody(data: summary),
-          const SizedBox(height: 20),
-        ],
-        if (topics.isNotEmpty) ...[
-          Text('热门话题',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: topics
-                .map((t) => Chip(
-                      label: Text(t, style: const TextStyle(fontSize: 12)),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor:
-                          Theme.of(context).colorScheme.primaryContainer,
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 20),
-        ],
-        if (langSummaries.isNotEmpty) ...[
-          Text('语言动态',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 110,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: langSummaries.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, i) {
-                final entry = langSummaries[i];
-                return _LanguageCard(
-                    language: entry.key, summary: entry.value as String? ?? '');
-              },
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-        if (topRepos.isNotEmpty) ...[
-          Text('精选仓库',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          ...topRepos.take(5).map((r) => _TopRepoTile(data: r)),
-        ],
-      ],
-    );
-  }
-}
-
-class _LanguageCard extends StatelessWidget {
-  const _LanguageCard({required this.language, required this.summary});
-  final String language;
-  final String summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final color = Color(int.tryParse(
-            Constants.getLanguageColor(language).replaceFirst('#', '0xFF')) ??
-        0xFF8b949e);
-    return Container(
-      width: 160,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withAlpha(80), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-              Text(language,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 13)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Expanded(
-            child: Text(
-              summary,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.4),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TopRepoTile extends StatelessWidget {
-  const _TopRepoTile({required this.data});
-  final Map<String, dynamic> data;
-
-  static String _fmt(int n) =>
-      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
-
-  @override
-  Widget build(BuildContext context) {
-    final owner = data['owner'] as String? ?? '';
-    final name = data['name'] as String? ?? '';
-    final description = data['description'] as String? ?? '';
-    final stars = data['stars'] as int? ?? 0;
-    final language = data['language'] as String? ?? '';
-
-    return InkWell(
-      onTap: () {
-        if (owner.isNotEmpty && name.isNotEmpty) {
-          context.push('/repository/$owner/$name');
-        }
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$owner/$name',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                if (language.isNotEmpty) ...[
-                  _LangDot(language: language),
-                  const SizedBox(width: 10),
-                ],
-                const Icon(Icons.star_border, size: 13),
-                const SizedBox(width: 2),
-                Text(_fmt(stars), style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    return DailyReportView(report: report!);
   }
 }
 
@@ -1253,16 +1054,17 @@ class _CuratedCard extends StatelessWidget {
   static String _fmtStars(int n) =>
       n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 
-  Color _rankBadgeColor(int rank) {
+  Color _rankBadgeColor(int rank, ColorScheme cs) {
     if (rank == 1) return const Color(0xFFFFD700);
     if (rank == 2) return const Color(0xFFC0C0C0);
     if (rank == 3) return const Color(0xFFCD7F32);
-    return const Color(0xFF0969da);
+    return cs.primary;
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1287,7 +1089,7 @@ class _CuratedCard extends StatelessWidget {
                     height: 28,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: _rankBadgeColor(item.rank),
+                      color: _rankBadgeColor(item.rank, cs),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
@@ -1345,23 +1147,25 @@ class _CuratedCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0F7FF),
+                    color: isDark
+                        ? const Color(0xFF1C2B3A)
+                        : const Color(0xFFF0F7FF),
                     borderRadius: BorderRadius.circular(8),
-                    border: const Border(
-                      left: BorderSide(color: Color(0xFF0969da), width: 3),
+                    border: Border(
+                      left: BorderSide(color: cs.primary, width: 3),
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.lightbulb_outline,
-                          size: 14, color: Color(0xFF0969da)),
+                      Icon(Icons.lightbulb_outline,
+                          size: 14, color: cs.primary),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           item.curatorNote,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF0969da),
+                            color: cs.primary,
                             fontWeight: FontWeight.w500,
                           ),
                           maxLines: 2,
@@ -1419,6 +1223,7 @@ class _TypeTag extends StatelessWidget {
   Widget build(BuildContext context) {
     final String label;
     final Color bg;
+    final cs = Theme.of(context).colorScheme;
 
     if (item.isPromoted) {
       label = '推广';
@@ -1431,7 +1236,7 @@ class _TypeTag extends StatelessWidget {
       bg = const Color(0xFF1a7f37);
     } else {
       label = '精选';
-      bg = const Color(0xFF0969da);
+      bg = cs.primary;
     }
 
     return Container(

@@ -181,9 +181,7 @@ class DailyApiClient {
     final cacheKey = ApiCache.keyFor('GET', '/reports', params);
     final cached = ApiCache.instance.get(cacheKey);
     if (cached != null && cached.isFreshFor(_reportTtl)) {
-      final map = cached.body as Map<String, dynamic>;
-      return ApiResponse.ok(
-          map['data'] as Map<String, dynamic>? ?? map);
+      return ApiResponse.ok(normalizeReportPayload(cached.body));
     }
 
     try {
@@ -196,9 +194,7 @@ class DailyApiClient {
         CachedEntry(
             etag: null, body: response.data, fetchedAt: DateTime.now()),
       );
-      final body = response.data as Map<String, dynamic>;
-      return ApiResponse.ok(
-          body['data'] as Map<String, dynamic>? ?? body);
+      return ApiResponse.ok(normalizeReportPayload(response.data));
     } on DioException catch (e) {
       return ApiResponse.fail(e.message ?? '网络请求失败');
     }
@@ -210,7 +206,7 @@ class DailyApiClient {
     final cacheKey = ApiCache.keyFor('GET', '/reports/latest', params);
     final cached = ApiCache.instance.get(cacheKey);
     if (cached != null && cached.isFreshFor(_reportTtl)) {
-      return ApiResponse.ok(cached.body as Map<String, dynamic>);
+      return ApiResponse.ok(normalizeReportPayload(cached.body));
     }
 
     try {
@@ -223,10 +219,15 @@ class DailyApiClient {
         CachedEntry(
             etag: null, body: response.data, fetchedAt: DateTime.now()),
       );
-      return ApiResponse.ok(response.data as Map<String, dynamic>);
+      return ApiResponse.ok(normalizeReportPayload(response.data));
     } on DioException catch (e) {
       return ApiResponse.fail(e.message ?? '网络请求失败');
     }
+  }
+
+  static Map<String, dynamic> normalizeReportPayload(dynamic body) {
+    final map = body as Map<String, dynamic>;
+    return map['data'] as Map<String, dynamic>? ?? map;
   }
 
   // ── Repo analysis ─────────────────────────────────────────────────────────────

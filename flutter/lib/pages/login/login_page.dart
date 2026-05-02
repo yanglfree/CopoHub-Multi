@@ -9,7 +9,7 @@ import '../../router/app_router.dart';
 import '../../utils/constants.dart';
 import '../../utils/platform_utils.dart';
 
-// webview_flutter has no HarmonyOS (ohos) implementation.
+// webview_flutter uses the OpenHarmony-SIG fork which provides ohos support.
 bool get _isOhos => isOhos;
 
 const _ohosClipboardChannel = MethodChannel('com.copohub/clipboard');
@@ -42,12 +42,6 @@ class _LoginPageState extends State<LoginPage> {
   // ── OAuth flow ─────────────────────────────────────────────────────────────
 
   void _startOAuth() {
-    if (_isOhos) {
-      setState(() =>
-          _errorMessage = 'OAuth 登录暂不支持当前平台，请使用 Personal Access Token 登录');
-      setState(() => _showTokenLogin = true);
-      return;
-    }
     final url = AuthService.instance.getGitHubOAuthUrl();
     final ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -230,7 +224,7 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6FAFD),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
@@ -333,7 +327,7 @@ class _LoginPageState extends State<LoginPage> {
             style: ButtonStyle(
               backgroundColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.disabled)) {
-                  return const Color(0xFFAEB4B8);
+                  return Theme.of(context).colorScheme.onSurface.withAlpha(30);
                 }
                 return const Color(0xFF24292F);
               }),
@@ -362,9 +356,10 @@ class _LoginPageState extends State<LoginPage> {
                       _errorMessage = '';
                     }),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF8FBEF2),
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: const Color(0xFFB9D5F5),
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+              disabledBackgroundColor:
+                  Theme.of(context).colorScheme.primaryContainer.withAlpha(128),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(28),
               ),
@@ -470,7 +465,7 @@ class _LoginPageState extends State<LoginPage> {
             child: FilledButton(
               onPressed: _loading ? null : _loginWithToken,
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0969DA),
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),

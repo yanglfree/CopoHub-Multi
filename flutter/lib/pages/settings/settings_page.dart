@@ -4,6 +4,7 @@ import '../../api/github_api_client.dart';
 import '../../services/auth_service.dart';
 import '../../services/theme_service.dart';
 import '../../utils/constants.dart';
+import '../../components/dialogs/app_dialog.dart';
 import '../../components/policy/policy_dialog.dart';
 
 /// App settings page — mirrors HarmonyOS SettingsView.
@@ -30,7 +31,7 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         children: [
           // ── Account section ──────────────────────────────────────────────────
-          _SectionHeader(title: '账号'),
+          const _SectionHeader(title: '账号'),
           if (user != null)
             ListTile(
               leading: CircleAvatar(
@@ -43,13 +44,13 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
 
           // ── Appearance section ───────────────────────────────────────────────
-          _SectionHeader(title: '外观'),
+          const _SectionHeader(title: '外观'),
           _ThemeModeTile(themeService: _themeService),
           const Divider(height: 1, indent: 16),
           _ContributionThemeTile(themeService: _themeService),
 
           // ── Data section ─────────────────────────────────────────────────────
-          _SectionHeader(title: '数据'),
+          const _SectionHeader(title: '数据'),
           ListTile(
             leading: const Icon(Icons.cleaning_services_outlined),
             title: const Text('清除缓存'),
@@ -58,7 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
 
           // ── Pro membership ───────────────────────────────────────────────────
-          _SectionHeader(title: 'Pro'),
+          const _SectionHeader(title: 'Pro'),
           ListTile(
             leading: const Icon(Icons.workspace_premium_outlined),
             title: const Text('CopoHub Pro'),
@@ -68,7 +69,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
 
           // ── About section ────────────────────────────────────────────────────
-          _SectionHeader(title: '关于'),
+          const _SectionHeader(title: '关于'),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('版本'),
@@ -77,33 +78,29 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const Divider(height: 1, indent: 16),
           ListTile(
-            leading: const Icon(Icons.privacy_tip_outlined),
-            title: const Text('隐私政策'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => showDialog(
-              context: context,
-              builder: (_) => const PolicyDialog(
-                  initialTab: PolicyTab.privacy),
+            leading: const Icon(Icons.mail_outline),
+            title: const Text('联系方式'),
+            subtitle: Text(
+              'youdroid2048@gmail.com',
+              style: TextStyle(color: cs.onSurfaceVariant),
             ),
           ),
           const Divider(height: 1, indent: 16),
           ListTile(
-            leading: const Icon(Icons.description_outlined),
-            title: const Text('服务条款'),
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: const Text('隐私政策与协议'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => showDialog(
               context: context,
-              builder: (_) => const PolicyDialog(
-                  initialTab: PolicyTab.terms),
+              builder: (_) => const PolicyDialog(initialTab: PolicyTab.privacy),
             ),
           ),
 
           // ── Danger zone ──────────────────────────────────────────────────────
-          _SectionHeader(title: ''),
+          const _SectionHeader(title: ''),
           ListTile(
             leading: Icon(Icons.logout, color: cs.error),
-            title: Text('退出登录',
-                style: TextStyle(color: cs.error)),
+            title: Text('退出登录', style: TextStyle(color: cs.error)),
             onTap: () => _confirmLogout(context),
           ),
           const SizedBox(height: 32),
@@ -113,22 +110,14 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _clearCache(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppConfirmDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('清除缓存'),
-        content: const Text('确定要清除所有接口缓存数据吗？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('清除')),
-        ],
-      ),
+      title: '清除缓存',
+      message: '确定要清除所有接口缓存数据吗？',
+      confirmLabel: '清除',
+      icon: Icons.cleaning_services_outlined,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await GitHubApiClient.instance.clearAllCaches();
       if (context.mounted) {
         ScaffoldMessenger.of(context)
@@ -138,24 +127,15 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _confirmLogout(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppConfirmDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('确定要退出登录吗？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消')),
-          FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('退出')),
-        ],
-      ),
+      title: '退出登录',
+      message: '确定要退出登录吗？',
+      confirmLabel: '退出',
+      icon: Icons.logout,
+      isDestructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await AuthService.instance.logout();
     }
   }
@@ -253,7 +233,7 @@ class _ContributionThemeTileState extends State<_ContributionThemeTile> {
   @override
   Widget build(BuildContext context) {
     final current = widget.themeService.contributionTheme;
-    final themes = Constants.contributionThemes;
+    const themes = Constants.contributionThemes;
 
     return ExpansionTile(
       leading: const Icon(Icons.palette_outlined),
@@ -271,9 +251,9 @@ class _ContributionThemeTileState extends State<_ContributionThemeTile> {
                       height: 12,
                       margin: const EdgeInsets.only(right: 2),
                       decoration: BoxDecoration(
-                        color: Color(int.tryParse(
-                                hex.replaceFirst('#', '0xFF')) ??
-                            0xFF000000),
+                        color: Color(
+                            int.tryParse(hex.replaceFirst('#', '0xFF')) ??
+                                0xFF000000),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ))
@@ -291,9 +271,9 @@ class _ContributionThemeTileState extends State<_ContributionThemeTile> {
                           height: 14,
                           margin: const EdgeInsets.only(right: 3),
                           decoration: BoxDecoration(
-                            color: Color(int.tryParse(
-                                    hex.replaceFirst('#', '0xFF')) ??
-                                0xFF000000),
+                            color: Color(
+                                int.tryParse(hex.replaceFirst('#', '0xFF')) ??
+                                    0xFF000000),
                             borderRadius: BorderRadius.circular(3),
                           ),
                         )),
@@ -304,8 +284,7 @@ class _ContributionThemeTileState extends State<_ContributionThemeTile> {
                     ? Icon(Icons.check,
                         color: Theme.of(context).colorScheme.primary)
                     : null,
-                onTap: () =>
-                    widget.themeService.setContributionTheme(t.name),
+                onTap: () => widget.themeService.setContributionTheme(t.name),
               ))
           .toList(),
     );

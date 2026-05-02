@@ -1,9 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import '../../api/github_api_client.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/repository.dart';
@@ -232,7 +235,8 @@ class _RepositoryPageState extends State<RepositoryPage>
                   owner: widget.owner,
                   repo: widget.repo,
                   defaultBranch: repo.defaultBranch,
-                  scrollResetVersion: _tabScrollResetVersions[0]),
+                  scrollResetVersion: _tabScrollResetVersions[0],
+                  isDark: Theme.of(context).brightness == Brightness.dark),
               _CodeTab(
                   owner: widget.owner,
                   repo: widget.repo,
@@ -539,11 +543,13 @@ class _ReadmeTab extends StatefulWidget {
     required this.repo,
     required this.defaultBranch,
     required this.scrollResetVersion,
+    required this.isDark,
   });
   final String owner;
   final String repo;
   final String defaultBranch;
   final int scrollResetVersion;
+  final bool isDark;
 
   @override
   State<_ReadmeTab> createState() => _ReadmeTabState();
@@ -552,9 +558,14 @@ class _ReadmeTab extends StatefulWidget {
 class _ReadmeTabState extends State<_ReadmeTab>
     with AutomaticKeepAliveClientMixin {
   final _api = GitHubApiClient.instance;
-  String _content = '';
+  late final WebViewController _webViewController;
+  String _readmePath = 'README.md';
+  String _downloadUrl = '';
+  String _htmlUrl = '';
   bool _loading = true;
   bool _hasError = false;
+  bool _readmeHtmlLoaded = false;
+  String? _cachedMarkdown;
 
   @override
   bool get wantKeepAlive => true;
@@ -562,41 +573,146 @@ class _ReadmeTabState extends State<_ReadmeTab>
   @override
   void initState() {
     super.initState();
+    _webViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.disabled)
+      ..setBackgroundColor(Colors.transparent)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            final url = request.url;
+            if (url == 'about:blank' || url.startsWith('data:')) {
+              return NavigationDecision.navigate;
+            }
+            if (!request.isMainFrame) {
+              return NavigationDecision.navigate;
+            }
+            if (!_readmeHtmlLoaded) {
+              return NavigationDecision.prevent;
+            }
+            final uri = Uri.tryParse(url);
+            if (uri != null &&
+                (uri.scheme == 'http' ||
+                    uri.scheme == 'https' ||
+                    uri.scheme == 'mailto')) {
+              launchUrl(uri, mode: LaunchMode.externalApplication);
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.prevent;
+          },
+          onPageFinished: (_) {
+            _readmeHtmlLoaded = true;
+          },
+        ),
+      );
     _loadReadme();
   }
 
-  Future<void> _loadReadme() async {
-    // Try common README filenames in order
-    for (final name in ['README.md', 'readme.md', 'Readme.md', 'README']) {
-      final result = await _api.getFileContents(
-        widget.owner,
-        widget.repo,
-        name,
-        ref: widget.defaultBranch,
-      );
+  @override
+  void didUpdateWidget(covariant _ReadmeTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.owner != widget.owner ||
+        oldWidget.repo != widget.repo ||
+        oldWidget.defaultBranch != widget.defaultBranch) {
+      _cachedMarkdown = null;
+      _loadReadme();
+      return;
+    }
+    if (oldWidget.isDark != widget.isDark && _cachedMarkdown != null) {
+      _renderReadme(_cachedMarkdown!);
+      return;
+    }
+    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (result.isSuccess) {
-        final data = result.data;
-        if (data is Map<String, dynamic>) {
-          final encoded = data['content'] as String? ?? '';
-          try {
-            final cleaned = encoded.replaceAll('\n', '');
-            final text = utf8.decode(base64Decode(cleaned));
-            setState(() {
-              _content = text;
-              _loading = false;
-              _hasError = false;
-            });
-            return;
-          } catch (_) {}
-        }
+      final controller = PrimaryScrollController.maybeOf(context);
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpTo(0);
+    });
+  }
+
+  Future<void> _loadReadme() async {
+    setState(() {
+      _loading = true;
+      _hasError = false;
+      _readmeHtmlLoaded = false;
+      _readmePath = 'README.md';
+      _downloadUrl = '';
+      _htmlUrl = '';
+    });
+
+    final result = await _api.getRepositoryReadme(
+      widget.owner,
+      widget.repo,
+      ref: widget.defaultBranch,
+    );
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      final data = result.data;
+      final encoded = data?['content'] as String? ?? '';
+      final encoding = (data?['encoding'] as String? ?? 'base64').toLowerCase();
+      final text = _decodeReadmeContent(encoded, encoding);
+      if (text != null && text.trim().isNotEmpty) {
+        _readmePath = data?['path'] as String? ?? 'README.md';
+        _downloadUrl = data?['download_url'] as String? ?? '';
+        _htmlUrl = data?['html_url'] as String? ?? '';
+        _cachedMarkdown = text;
+        await _renderReadme(text);
+        if (!mounted) return;
+        if (!_hasError) return;
       }
     }
+
     if (mounted) {
       setState(() {
         _loading = false;
         _hasError = true;
       });
+    }
+  }
+
+  Future<void> _renderReadme(String markdown) async {
+    try {
+      final result = await _api.renderMarkdown(
+        markdown,
+        mode: 'gfm',
+        context: '${widget.owner}/${widget.repo}',
+      );
+      if (!mounted) return;
+
+      if (!result.isSuccess || result.data == null || result.data!.isEmpty) {
+        setState(() {
+          _loading = false;
+          _hasError = true;
+        });
+        return;
+      }
+
+      final html =
+          _buildHtmlDocument(_rewriteRenderedHtml(_sanitizeHtml(result.data!)));
+      _readmeHtmlLoaded = false;
+      await _webViewController.loadHtmlString(html);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _hasError = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _hasError = true;
+      });
+    }
+  }
+
+  String? _decodeReadmeContent(String content, String encoding) {
+    if (content.isEmpty) return null;
+    if (encoding != 'base64') return content;
+    try {
+      return utf8.decode(base64Decode(content.replaceAll('\n', '')));
+    } catch (_) {
+      return null;
     }
   }
 
@@ -618,19 +734,249 @@ class _ReadmeTabState extends State<_ReadmeTab>
         ),
       );
     }
-    return Markdown(
+    return WebViewWidget(
       key: PageStorageKey<String>(
-        'repository-readme-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
+        'repository-readme-webview-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
       ),
-      data: _content,
-      selectable: true,
-      padding: const EdgeInsets.all(16),
-      onTapLink: (text, href, title) {
-        if (href != null) {
-          launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-        }
+      controller: _webViewController,
+      gestureRecognizers: {
+        Factory<VerticalDragGestureRecognizer>(
+          () => VerticalDragGestureRecognizer(),
+        ),
       },
     );
+  }
+
+  String _sanitizeHtml(String html) {
+    return html
+        .replaceAll(
+            RegExp(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>',
+                caseSensitive: false),
+            '')
+        .replaceAll(
+            RegExp(r'''\son[a-z]+\s*=\s*(['"]).*?\1''', caseSensitive: false),
+            '')
+        .replaceAll(RegExp(r'\sjavascript:', caseSensitive: false), '');
+  }
+
+  String _rewriteRenderedHtml(String html) {
+    var result = html.replaceAllMapped(
+      RegExp(r'''\b(src|href)\s*=\s*(['"])([^'"]*)(['"])''',
+          caseSensitive: false),
+      (match) {
+        final attr = match.group(1)!.toLowerCase();
+        final quote = match.group(2)!;
+        final value = match.group(3)!;
+        final resolved = _resolveReadmeUrl(value, forImage: attr == 'src');
+        return '$attr=$quote${_escapeHtmlAttribute(resolved)}$quote';
+      },
+    );
+
+    result = result.replaceAllMapped(
+      RegExp(r'''\bsrcset\s*=\s*(['"])([^'"]*)(['"])''', caseSensitive: false),
+      (match) {
+        final quote = match.group(1)!;
+        final value = match.group(2)!;
+        final resolved = value.split(',').map((candidate) {
+          final trimmed = candidate.trim();
+          if (trimmed.isEmpty) return trimmed;
+          final parts = trimmed.split(RegExp(r'\s+'));
+          parts[0] = _resolveReadmeUrl(parts[0], forImage: true);
+          return parts.join(' ');
+        }).join(', ');
+        return 'srcset=$quote${_escapeHtmlAttribute(resolved)}$quote';
+      },
+    );
+
+    return result;
+  }
+
+  String _buildHtmlDocument(String bodyHtml) {
+    final isDark = widget.isDark;
+    final bg = isDark ? '#0d1117' : '#ffffff';
+    final fg = isDark ? '#e6edf3' : '#24292f';
+    final muted = isDark ? '#8b949e' : '#57606a';
+    final border = isDark ? '#30363d' : '#d0d7de';
+    final codeBg =
+        isDark ? 'rgba(110, 118, 129, 0.4)' : 'rgba(175, 184, 193, 0.2)';
+    final preBg = isDark ? '#161b22' : '#f6f8fa';
+    final link = isDark ? '#58a6ff' : '#0969da';
+    return '''
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3">
+  <style>
+    :root {
+      --bg: $bg;
+      --fg: $fg;
+      --muted: $muted;
+      --border: $border;
+      --code-bg: $codeBg;
+      --pre-bg: $preBg;
+      --link: $link;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+    body {
+      padding: 16px 24px 28px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overflow-wrap: break-word;
+      -webkit-overflow-scrolling: touch;
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1, h2 {
+      padding-bottom: .3em;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { font-size: 2em; }
+    h2 { font-size: 1.5em; }
+    h3 { font-size: 1.25em; }
+    h4 { font-size: 1em; }
+    h5 { font-size: .875em; }
+    h6 { font-size: .85em; color: var(--muted); }
+    img { max-width: 100%; height: auto; }
+    code {
+      padding: .2em .4em;
+      border-radius: 6px;
+      background: var(--code-bg);
+      font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Consolas, monospace;
+      font-size: 85%;
+    }
+    pre {
+      padding: 16px;
+      overflow: auto;
+      border-radius: 6px;
+      background: var(--pre-bg);
+    }
+    pre code { padding: 0; background: transparent; }
+    blockquote {
+      margin: 0;
+      padding: 0 1em;
+      color: var(--muted);
+      border-left: .25em solid var(--border);
+    }
+    table {
+      display: block;
+      width: max-content;
+      max-width: 100%;
+      overflow: auto;
+      border-spacing: 0;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 6px 13px;
+      border: 1px solid var(--border);
+    }
+    hr {
+      height: .25em;
+      padding: 0;
+      margin: 24px 0;
+      background-color: var(--border);
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <main class="markdown-body">
+    $bodyHtml
+  </main>
+</body>
+</html>
+''';
+  }
+
+  String _resolveReadmeUrl(String href, {bool forImage = false}) {
+    final trimmed = href.trim();
+    if (trimmed.isEmpty) return trimmed;
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null && uri.hasScheme) {
+      final scheme = uri.scheme.toLowerCase();
+      if (scheme == 'http' || scheme == 'https' || scheme == 'mailto') {
+        return trimmed;
+      }
+      if (forImage && scheme == 'data') {
+        return trimmed;
+      }
+      return 'about:blank';
+    }
+
+    if (trimmed.startsWith('//')) {
+      return 'https:$trimmed';
+    }
+
+    if (trimmed.startsWith('#')) {
+      final base = _htmlUrl.isNotEmpty
+          ? _htmlUrl
+          : 'https://github.com/${widget.owner}/${widget.repo}';
+      return '$base$trimmed';
+    }
+
+    if (trimmed.startsWith('/')) {
+      final sitePath = trimmed.substring(1);
+      if (sitePath.startsWith('${widget.owner}/${widget.repo}/')) {
+        return 'https://github.com$trimmed';
+      }
+      final path = _normalizeRepoPath(trimmed.substring(1));
+      if (forImage) return _rawUrlFor(path);
+      return 'https://github.com/${widget.owner}/${widget.repo}/blob/${widget.defaultBranch}/$path';
+    }
+
+    final baseDir = _readmePath.contains('/')
+        ? _readmePath.substring(0, _readmePath.lastIndexOf('/'))
+        : '';
+    final joined = baseDir.isEmpty ? trimmed : '$baseDir/$trimmed';
+    final normalized = _normalizeRepoPath(joined);
+
+    if (forImage) {
+      if (_downloadUrl.isNotEmpty && normalized == _readmePath) {
+        return _downloadUrl;
+      }
+      return _rawUrlFor(normalized);
+    }
+
+    return 'https://github.com/${widget.owner}/${widget.repo}/blob/${widget.defaultBranch}/$normalized';
+  }
+
+  String _rawUrlFor(String path) =>
+      'https://raw.githubusercontent.com/${widget.owner}/${widget.repo}/${_encodePath(widget.defaultBranch)}/${_encodePath(path)}';
+
+  String _escapeHtmlAttribute(String value) {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+  }
+
+  String _encodePath(String path) =>
+      path.split('/').map(Uri.encodeComponent).join('/');
+
+  String _normalizeRepoPath(String path) {
+    final output = <String>[];
+    for (final part in path.split('/')) {
+      if (part.isEmpty || part == '.') continue;
+      if (part == '..') {
+        if (output.isNotEmpty) output.removeLast();
+        continue;
+      }
+      output.add(part);
+    }
+    return output.join('/');
   }
 }
 
@@ -672,6 +1018,18 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
     super.initState();
     _selectedBranch = widget.defaultBranch;
     _loadContents('');
+  }
+
+  @override
+  void didUpdateWidget(covariant _CodeTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controller = PrimaryScrollController.maybeOf(context);
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpTo(0);
+    });
   }
 
   Future<void> _loadContents(String path) async {
@@ -732,6 +1090,17 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
     _loadContents(_pathStack.isEmpty ? '' : _pathStack.last.path);
   }
 
+  void _navigateTo(int index) {
+    if (index == -1) {
+      setState(() => _pathStack.clear());
+      _loadContents('');
+    } else {
+      final path = _pathStack[index].path;
+      setState(() => _pathStack.removeRange(index + 1, _pathStack.length));
+      _loadContents(path);
+    }
+  }
+
   void _showBranchPicker(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     showModalBottomSheet<void>(
@@ -751,7 +1120,7 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
+                    color: Theme.of(context).colorScheme.outlineVariant,
                     borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 12),
             Text(l10n.branchesAndTags,
@@ -819,12 +1188,59 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
                   ),
                 ),
               Expanded(
-                child: Text(
-                  _pathStack.isEmpty
-                      ? l10n.root
-                      : _pathStack.map((e) => e.name).join(' / '),
-                  style: const TextStyle(fontSize: 13),
-                  overflow: TextOverflow.ellipsis,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap:
+                            _pathStack.isEmpty ? null : () => _navigateTo(-1),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 2),
+                          child: Text(
+                            l10n.root,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: _pathStack.isEmpty
+                                  ? cs.onSurface
+                                  : cs.primary,
+                              fontWeight: _pathStack.isEmpty
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      ),
+                      for (int i = 0; i < _pathStack.length; i++) ...[
+                        Icon(Icons.chevron_right,
+                            size: 14, color: cs.onSurfaceVariant),
+                        InkWell(
+                          onTap: i == _pathStack.length - 1
+                              ? null
+                              : () => _navigateTo(i),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 2),
+                            child: Text(
+                              _pathStack[i].name,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: i == _pathStack.length - 1
+                                    ? cs.onSurface
+                                    : cs.primary,
+                                fontWeight: i == _pathStack.length - 1
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
               // Branch chip
@@ -989,6 +1405,18 @@ class _IssuesTabState extends State<_IssuesTab>
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _IssuesTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controller = PrimaryScrollController.maybeOf(context);
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpTo(0);
+    });
   }
 
   Future<void> _load({bool refresh = false}) async {
@@ -1267,6 +1695,18 @@ class _CommitsTabState extends State<_CommitsTab>
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant _CommitsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controller = PrimaryScrollController.maybeOf(context);
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpTo(0);
+    });
+  }
+
   Future<void> _load({bool refresh = false}) async {
     if (_loading) return;
     if (refresh) {
@@ -1327,7 +1767,7 @@ class _CommitsTabState extends State<_CommitsTab>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
+                    color: Theme.of(context).colorScheme.outlineVariant,
                     borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 12),
             Text(l10n.selectBranch,
@@ -1576,6 +2016,18 @@ class _ReleasesTabState extends State<_ReleasesTab>
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReleasesTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controller = PrimaryScrollController.maybeOf(context);
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpTo(0);
+    });
   }
 
   Future<void> _load() async {

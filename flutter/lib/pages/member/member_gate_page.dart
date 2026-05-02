@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/pro_member_service.dart';
+import '../../components/dialogs/app_dialog.dart';
 import '../../components/policy/policy_dialog.dart';
 
 /// Pro membership paywall — mirrors HarmonyOS MemberGatePage.
@@ -80,15 +81,23 @@ class _MemberGatePageState extends State<MemberGatePage> {
     }
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('购买功能'),
-        content: const Text('应用内购买功能即将推出，敬请期待！'),
+      builder: (dialogContext) => AppDialog(
+        title: '购买功能',
+        icon: Icons.workspace_premium_outlined,
         actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('好的'),
+          AppDialogAction(
+            label: '好的',
+            isPrimary: true,
+            onPressed: () => Navigator.pop(dialogContext),
           ),
         ],
+        child: Text(
+          '应用内购买功能即将推出，敬请期待！',
+          style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
+                height: 1.5,
+              ),
+        ),
       ),
     );
   }
@@ -129,9 +138,9 @@ class _MemberGatePageState extends State<MemberGatePage> {
             Container(
               width: 80,
               height: 80,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [const Color(0xFFFFD700), const Color(0xFFFFA000)],
+                  colors: [Color(0xFFFFD700), Color(0xFFFFA000)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -147,13 +156,11 @@ class _MemberGatePageState extends State<MemberGatePage> {
                     .headlineSmall
                     ?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            Text(planLabel,
-                style: TextStyle(color: cs.primary, fontSize: 15)),
+            Text(planLabel, style: TextStyle(color: cs.primary, fontSize: 15)),
             if (_proService.expiryLabel.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(_proService.expiryLabel,
-                  style: TextStyle(
-                      color: cs.onSurfaceVariant, fontSize: 13)),
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
             ],
             const SizedBox(height: 32),
             ..._benefits.map((b) => _BenefitRow(benefit: b)),
@@ -263,9 +270,7 @@ class _MemberGatePageState extends State<MemberGatePage> {
                           text: TextSpan(
                             style: TextStyle(
                                 fontSize: 12,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface),
+                                color: Theme.of(context).colorScheme.onSurface),
                             children: [
                               const TextSpan(text: '我已阅读并同意 '),
                               WidgetSpan(
@@ -332,8 +337,7 @@ class _MemberGatePageState extends State<MemberGatePage> {
                 Center(
                   child: Text(
                     '随时可取消 · 安全支付',
-                    style: TextStyle(
-                        fontSize: 11, color: cs.onSurfaceVariant),
+                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -371,9 +375,7 @@ class _Plan {
 
 class _PlanCard extends StatelessWidget {
   const _PlanCard(
-      {required this.plan,
-      required this.selected,
-      required this.onTap});
+      {required this.plan, required this.selected, required this.onTap});
   final _Plan plan;
   final bool selected;
   final VoidCallback onTap;
@@ -405,16 +407,13 @@ class _PlanCard extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: selected
-                      ? const Color(0xFF1A237E)
-                      : cs.outlineVariant,
+                  color: selected ? const Color(0xFF1A237E) : cs.outlineVariant,
                   width: 2,
                 ),
                 color: selected ? const Color(0xFF1A237E) : null,
               ),
               child: selected
-                  ? const Icon(Icons.check,
-                      color: Colors.white, size: 12)
+                  ? const Icon(Icons.check, color: Colors.white, size: 12)
                   : null,
             ),
             const SizedBox(width: 12),
@@ -429,9 +428,8 @@ class _PlanCard extends StatelessWidget {
                       Text(plan.name,
                           style: TextStyle(
                               fontWeight: FontWeight.w600,
-                              color: selected
-                                  ? const Color(0xFF1A237E)
-                                  : null)),
+                              color:
+                                  selected ? const Color(0xFF1A237E) : null)),
                       if (plan.badge.isNotEmpty) ...[
                         const SizedBox(width: 6),
                         Container(
@@ -448,9 +446,8 @@ class _PlanCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: plan.isBest
-                                  ? Colors.white
-                                  : Colors.black87,
+                              color:
+                                  plan.isBest ? Colors.white : Colors.black87,
                             ),
                           ),
                         ),
@@ -482,15 +479,14 @@ class _PlanCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: selected
-                            ? const Color(0xFF1A237E)
-                            : cs.onSurface,
+                        color:
+                            selected ? const Color(0xFF1A237E) : cs.onSurface,
                       ),
                     ),
                     Text(
                       plan.period,
-                      style: TextStyle(
-                          fontSize: 11, color: cs.onSurfaceVariant),
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -516,9 +512,7 @@ class _PlanCard extends StatelessWidget {
 
 class _Benefit {
   const _Benefit(
-      {required this.icon,
-      required this.title,
-      required this.description});
+      {required this.icon, required this.title, required this.description});
   final IconData icon;
   final String title;
   final String description;

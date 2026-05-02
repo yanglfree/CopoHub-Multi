@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/daily_api_client.dart';
+import '../../components/daily/daily_report_view.dart';
 import '../../models/trending_item.dart';
 import '../../utils/constants.dart';
 
@@ -142,7 +143,8 @@ class _DailyPageState extends State<DailyPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Daily', style: TextStyle(fontWeight: FontWeight.w700)),
+        title:
+            const Text('Daily', style: TextStyle(fontWeight: FontWeight.w700)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -234,7 +236,7 @@ class _DailyPageState extends State<DailyPage> {
     if (_report == null) {
       return const _EmptyView(message: '暂无报告数据');
     }
-    return _DailyReportView(report: _report!);
+    return DailyReportView(report: _report!);
   }
 }
 
@@ -274,16 +276,10 @@ class _DatePickerHeader extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  isToday ? '今天' : date,
+                  formatDailyReportDateLabel(date),
                   style: const TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 15),
                 ),
-                if (!isToday)
-                  Text(date,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(fontSize: 11)),
               ],
             ),
           ),
@@ -362,7 +358,8 @@ class _SegTab extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: active ? cs.primary : cs.onSurfaceVariant),
+            Icon(icon,
+                size: 16, color: active ? cs.primary : cs.onSurfaceVariant),
             const SizedBox(width: 4),
             Text(
               label,
@@ -568,7 +565,8 @@ class _TrendingCard extends StatelessWidget {
     );
   }
 
-  static String _fmt(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+  static String _fmt(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 }
 
 class _RankDeltaBadge extends StatelessWidget {
@@ -604,238 +602,6 @@ class _RankDeltaBadge extends StatelessWidget {
       ),
     );
   }
-}
-
-// ── Daily Report view ─────────────────────────────────────────────────────────
-
-class _DailyReportView extends StatelessWidget {
-  const _DailyReportView({required this.report});
-  final Map<String, dynamic> report;
-
-  @override
-  Widget build(BuildContext context) {
-    final summary = report['summary'] as String? ?? '';
-    final topics = (report['topics'] as List<dynamic>? ?? [])
-        .map((e) => e as String)
-        .toList();
-    final langSummaries =
-        (report['language_summaries'] as Map<String, dynamic>? ?? {})
-            .entries
-            .toList();
-    final topRepos = (report['top_repositories'] as List<dynamic>? ?? [])
-        .map((e) => e as Map<String, dynamic>)
-        .toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Summary
-        if (summary.isNotEmpty) ...[
-          Text('摘要',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Text(summary, style: const TextStyle(height: 1.6)),
-          const SizedBox(height: 20),
-        ],
-
-        // Hot topics
-        if (topics.isNotEmpty) ...[
-          Text('热门话题',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: topics
-                .map((t) => Chip(
-                      label: Text(t, style: const TextStyle(fontSize: 12)),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .primaryContainer,
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        // Language spotlight (horizontal scroll)
-        if (langSummaries.isNotEmpty) ...[
-          Text('语言动态',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 110,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: langSummaries.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, i) {
-                final entry = langSummaries[i];
-                return _LanguageCard(
-                    language: entry.key,
-                    summary: entry.value as String? ?? '');
-              },
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        // Top repos
-        if (topRepos.isNotEmpty) ...[
-          Text('精选仓库',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          ...topRepos.take(5).map((r) => _TopRepoTile(data: r)),
-        ],
-      ],
-    );
-  }
-}
-
-class _LanguageCard extends StatelessWidget {
-  const _LanguageCard({required this.language, required this.summary});
-  final String language;
-  final String summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final color = Color(int.tryParse(
-            Constants.getLanguageColor(language).replaceFirst('#', '0xFF')) ??
-        0xFF8b949e);
-
-    return Container(
-      width: 160,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withAlpha(80), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-              Text(language,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 13)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Expanded(
-            child: Text(
-              summary,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(height: 1.4),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TopRepoTile extends StatelessWidget {
-  const _TopRepoTile({required this.data});
-  final Map<String, dynamic> data;
-
-  @override
-  Widget build(BuildContext context) {
-    final owner = data['owner'] as String? ?? '';
-    final name = data['name'] as String? ?? '';
-    final description = data['description'] as String? ?? '';
-    final stars = data['stars'] as int? ?? 0;
-    final language = data['language'] as String? ?? '';
-
-    return InkWell(
-      onTap: () {
-        if (owner.isNotEmpty && name.isNotEmpty) {
-          context.push('/repository/$owner/$name');
-        }
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainer,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$owner/$name',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall),
-            ],
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                if (language.isNotEmpty) ...[
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: Color(int.tryParse(
-                              Constants.getLanguageColor(language)
-                                  .replaceFirst('#', '0xFF')) ??
-                          0xFF8b949e),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(language,
-                      style: Theme.of(context).textTheme.bodySmall),
-                  const SizedBox(width: 12),
-                ],
-                const Icon(Icons.star_border, size: 13),
-                const SizedBox(width: 2),
-                Text(_fmt(stars), style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static String _fmt(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import '../../api/github_api_client.dart';
 import '../../models/repository.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
+import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../utils/constants.dart';
 
 /// The "首页" (Home) tab — user repos + starred repos.
@@ -17,15 +18,28 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  final _nestedKey = GlobalKey<NestedScrollViewState>();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final innerCtrl = _nestedKey.currentState?.innerController;
+      if (innerCtrl != null && innerCtrl.hasClients) {
+        innerCtrl.jumpTo(0);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -38,6 +52,7 @@ class _HomePageState extends State<HomePage>
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
       body: NestedScrollView(
+        key: _nestedKey,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
             pinned: true,
@@ -282,7 +297,7 @@ class _UserReposTabState extends State<_UserReposTab>
     final cs = Theme.of(context).colorScheme;
 
     if (_loading && _allRepos.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const RepoListSkeleton();
     }
     if (_error.isNotEmpty && _allRepos.isEmpty) {
       return _ErrorView(
@@ -478,7 +493,7 @@ class _StarredReposTabState extends State<_StarredReposTab>
   Widget build(BuildContext context) {
     super.build(context);
     if (_loading && _repos.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const RepoListSkeleton();
     }
     if (_error.isNotEmpty && _repos.isEmpty) {
       return _ErrorView(

@@ -21,10 +21,12 @@ class ContributionCalendar extends ConsumerStatefulWidget {
     super.key,
     required this.username,
     this.initialYear,
+    this.showThemeMenu = true,
   });
 
   final String username;
   final int? initialYear;
+  final bool showThemeMenu;
 
   @override
   ConsumerState<ContributionCalendar> createState() =>
@@ -126,15 +128,17 @@ class _ContributionCalendarState extends ConsumerState<ContributionCalendar> {
                     ?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(width: 8),
-              _ContributionThemeMenu(
-                selectedTheme: selectedTheme,
-                onSelected: (themeName) {
-                  ref
-                      .read(themeServiceProvider)
-                      .setContributionTheme(themeName);
-                },
-              ),
-              const SizedBox(width: 8),
+              if (widget.showThemeMenu) ...[
+                _ContributionThemeMenu(
+                  selectedTheme: selectedTheme,
+                  onSelected: (themeName) {
+                    ref
+                        .read(themeServiceProvider)
+                        .setContributionTheme(themeName);
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
               if (_summary != null)
                 Expanded(
                   child: Align(

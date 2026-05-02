@@ -37,7 +37,14 @@ dependencies:
   cached_network_image: ^3.4.1
 
   # WebView (OAuth login)
-  webview_flutter: ^4.8.0
+  # Using OpenHarmony-SIG fork which adds ohos platform support.
+  # The SIG main package (4.6.0) registers android/ios/ohos and rewires
+  # all sub-package dependencies to its own git repo, so we must replace
+  # the whole webview dependency tree via dependency_overrides below.
+  webview_flutter:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_packages.git
+      path: packages/webview_flutter/webview_flutter
 
   # Utilities
   # Flutter 3.32.5 resolves 0.20.2, while Flutter-OH 3.22 resolves 0.19.0.
@@ -45,6 +52,22 @@ dependencies:
   url_launcher: ^6.3.1
   share_plus: ^10.1.3
   path_provider: ^2.1.5
+
+# Force all webview sub-packages to use the SIG fork so that version
+# resolution is consistent across android / ios / ohos platforms.
+dependency_overrides:
+  webview_flutter_android:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_packages.git
+      path: packages/webview_flutter/webview_flutter_android
+  webview_flutter_wkwebview:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_packages.git
+      path: packages/webview_flutter/webview_flutter_wkwebview
+  webview_flutter_platform_interface:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_packages.git
+      path: packages/webview_flutter/webview_flutter_platform_interface
 
 dev_dependencies:
   flutter_test:

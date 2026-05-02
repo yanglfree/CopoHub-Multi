@@ -2,14 +2,16 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/feedback/api_error_view.dart';
 import '../../components/contribution/contribution_calendar.dart';
+import '../../components/dialogs/app_dialog.dart';
 import '../../models/github_org.dart';
 import '../../models/pinned_repository.dart';
 import '../../models/user.dart';
 import '../../models/user_activity.dart';
+import '../../models/user_status.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
-import '../../services/theme_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -20,7 +22,6 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final _auth = AuthService.instance;
-  final _theme = ThemeService.instance;
   final _api = GitHubApiClient.instance;
 
   List<GithubOrg> _orgs = [];
@@ -33,6 +34,13 @@ class _ProfilePageState extends State<ProfilePage> {
   UserActivitySummary? _activity;
   bool _activityLoading = true;
 
+  GithubUserStatus? _status;
+
+  List<GithubUser> _followers = [];
+  List<GithubUser> _following = [];
+  bool _socialLoading = true;
+  String _socialError = '';
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +49,8 @@ class _ProfilePageState extends State<ProfilePage> {
       _loadOrgs(login);
       _loadPinnedOrTopRepos(login);
       _loadActivity();
+      _loadStatus(login);
+      _loadSocial(login);
     }
   }
 
@@ -121,25 +131,85 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  void _handleLogout() async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _loadStatus(String login) async {
+    final result = await _api.getUserStatus(login);
+    if (!mounted) return;
+    if (result.success) {
+      setState(() => _status = result.data);
+    }
+  }
+
+  Future<void> _showEditProfileDialog(GithubUser user) async {
+    final updated = await showDialog<GithubUser>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('确定要退出登录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('退出'),
-          ),
-        ],
-      ),
+      builder: (context) => _EditProfileDialog(user: user),
     );
-    if (confirmed == true && mounted) _auth.logout();
+    if (updated == null || !mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _showEditStatusDialog() async {
+    final updated = await showDialog<GithubUserStatus?>(
+      context: context,
+      builder: (context) => _EditStatusDialog(status: _status),
+    );
+    if (updated == null || !mounted) return;
+    setState(() => _status = updated.isEmpty ? null : updated);
+  }
+
+  Future<void> _loadSocial(String login) async {
+    setState(() {
+      _socialLoading = true;
+      _socialError = '';
+    });
+
+    final results = await Future.wait([
+      _api.getUserFollowers(login, perPage: 20),
+      _api.getUserFollowing(login, perPage: 20),
+    ]);
+
+    if (!mounted) return;
+    final followers = results[0];
+    final following = results[1];
+    setState(() {
+      _socialLoading = false;
+      _followers = followers.data ?? [];
+      _following = following.data ?? [];
+      if (!followers.success || !following.success) {
+        _socialError = followers.message ?? following.message ?? '加载失败';
+      }
+    });
+  }
+
+  Future<void> _refreshProfile(String login) async {
+    await Future.wait([
+      _loadOrgs(login),
+      _loadPinnedOrTopRepos(login),
+      _loadActivity(),
+      _loadStatus(login),
+      _loadSocial(login),
+    ]);
+  }
+
+  Future<void> _refreshSocial(String login) async {
+    await _loadSocial(login);
+  }
+
+  SliverAppBar _buildAppBar(GithubUser user) {
+    return SliverAppBar(
+      pinned: true,
+      title: Text(
+        user.name.isNotEmpty ? user.name : '@${user.login}',
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      actions: [
+        IconButton(
+          tooltip: '设置',
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () => context.push(AppRoutes.settings),
+        ),
+      ],
+    );
   }
 
   @override
@@ -149,79 +219,85 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       body: user == null
           ? const Center(child: CircularProgressIndicator())
-          : CustomScrollView(
-              slivers: [
-                // ── Simple pinned app bar (no expandedHeight) ──────────────
-                SliverAppBar(
-                  pinned: true,
-                  title: Text(
-                    user.name.isNotEmpty ? user.name : '@${user.login}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
+          : RefreshIndicator(
+              onRefresh: () => _refreshProfile(user.login),
+              child: CustomScrollView(
+                slivers: [
+                  // ── Simple pinned app bar (no expandedHeight) ──────────────
+                  _buildAppBar(user),
 
-                // ── User card (auto-sizes to content, no fixed height) ─────
-                SliverToBoxAdapter(child: _UserCard(user: user)),
-
-                // ── Stats ──────────────────────────────────────────────────
-                SliverToBoxAdapter(child: _StatsBar(user: user)),
-
-                // ── Info (location / company / blog / email) ───────────────
-                SliverToBoxAdapter(child: _InfoSection(user: user)),
-
-                // ── Organizations (conditional) ────────────────────────────
-                if (!_orgsLoading && _orgs.isNotEmpty)
-                  SliverToBoxAdapter(child: _OrgRow(orgs: _orgs)),
-
-                // ── Contribution heatmap ───────────────────────────────────
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                    child: ContributionCalendar(username: user.login),
-                  ),
-                ),
-
-                // ── Activity summary ───────────────────────────────────────
-                SliverToBoxAdapter(
-                  child: _ActivitySummaryCard(
-                    activity: _activity,
-                    loading: _activityLoading,
-                  ),
-                ),
-
-                // ── Pinned / Top repos carousel (conditional) ──────────────
-                if (!_pinnedLoading && _pinnedRepos.isNotEmpty)
+                  // ── User card (auto-sizes to content, no fixed height) ─────
                   SliverToBoxAdapter(
-                    child: _PinnedReposCarousel(
-                      repos: _pinnedRepos,
-                      login: user.login,
-                      isTopRepos: _pinnedIsTopRepos,
+                    child: _UserCard(
+                      user: user,
+                      status: _status,
+                      onEditProfile: () => _showEditProfileDialog(user),
+                      onEditStatus: _showEditStatusDialog,
                     ),
                   ),
 
-                // ── Menu ───────────────────────────────────────────────────
-                SliverToBoxAdapter(
-                  child: _MenuSection(
-                    onMyRepos: () => context.push(AppRoutes.myRepos),
-                    onStarred: () =>
-                        context.push('/starred/${user.login}'),
-                    onSettings: () => context.push(AppRoutes.settings),
-                    onLogout: _handleLogout,
-                    themeService: _theme,
-                  ),
-                ),
+                  // ── Stats ──────────────────────────────────────────────────
+                  SliverToBoxAdapter(child: _StatsBar(user: user)),
 
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(
-                      child: Text('CopoHub',
-                          style:
-                              TextStyle(color: Colors.grey, fontSize: 12)),
+                  // ── Info (location / company / blog / email) ───────────────
+                  SliverToBoxAdapter(child: _InfoSection(user: user)),
+
+                  // ── Organizations (conditional) ────────────────────────────
+                  if (!_orgsLoading && _orgs.isNotEmpty)
+                    SliverToBoxAdapter(child: _OrgRow(orgs: _orgs)),
+
+                  // ── Contribution heatmap ───────────────────────────────────
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                      child: ContributionCalendar(username: user.login),
                     ),
                   ),
-                ),
-              ],
+
+                  // ── Activity summary ───────────────────────────────────────
+                  SliverToBoxAdapter(
+                    child: _ActivitySummaryCard(
+                      activity: _activity,
+                      loading: _activityLoading,
+                    ),
+                  ),
+
+                  // ── Pinned / Top repos carousel (conditional) ──────────────
+                  if (!_pinnedLoading && _pinnedRepos.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: _PinnedReposCarousel(
+                        repos: _pinnedRepos,
+                        login: user.login,
+                        isTopRepos: _pinnedIsTopRepos,
+                      ),
+                    ),
+
+                  SliverToBoxAdapter(
+                    child: _SocialSection(
+                      username: user.login,
+                      followers: _followers,
+                      following: _following,
+                      followersCount: user.followers,
+                      followingCount: user.following,
+                      loading: _socialLoading,
+                      error: _socialError,
+                      onRetry: () => _refreshSocial(user.login),
+                    ),
+                  ),
+
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Center(
+                        child: Text('CopoHub',
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.outlineVariant,
+                                fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
     );
   }
@@ -230,8 +306,16 @@ class _ProfilePageState extends State<ProfilePage> {
 // ── User card (自适应高度，无 fixed expandedHeight) ─────────────────────────
 
 class _UserCard extends StatelessWidget {
-  const _UserCard({required this.user});
+  const _UserCard({
+    required this.user,
+    required this.status,
+    required this.onEditProfile,
+    required this.onEditStatus,
+  });
   final GithubUser user;
+  final GithubUserStatus? status;
+  final VoidCallback onEditProfile;
+  final VoidCallback onEditStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -246,55 +330,597 @@ class _UserCard extends StatelessWidget {
         ),
       ),
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ClipOval(
-            child: CachedNetworkImage(
-              imageUrl: user.avatarUrl,
-              width: 72,
-              height: 72,
-              placeholder: (_, __) => Container(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipOval(
+                child: CachedNetworkImage(
+                  imageUrl: user.avatarUrl,
                   width: 72,
                   height: 72,
-                  color: cs.surfaceContainerHighest),
-              errorWidget: (_, __, ___) =>
-                  Icon(Icons.person, size: 36, color: cs.onSurfaceVariant),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (user.name.isNotEmpty)
-                  Text(
-                    user.name,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                Text(
-                  '@${user.login}',
-                  style:
-                      TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+                  placeholder: (_, __) => Container(
+                      width: 72, height: 72, color: cs.surfaceContainerHighest),
+                  errorWidget: (_, __, ___) =>
+                      Icon(Icons.person, size: 36, color: cs.onSurfaceVariant),
                 ),
-                if (user.bio.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    user.bio,
-                    // 最多显示 3 行，防止过长
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, height: 1.4),
-                  ),
-                ],
-              ],
-            ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (user.name.isNotEmpty)
+                      Text(
+                        user.name,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    Text(
+                      '@${user.login}',
+                      style:
+                          TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+                    ),
+                    if (status?.isNotEmpty == true) ...[
+                      const SizedBox(height: 8),
+                      _StatusPill(status: status!, onTap: onEditStatus),
+                    ],
+                    if (user.bio.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        user.bio,
+                        // 最多显示 3 行，防止过长
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13, height: 1.4),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _ProfileActionButtons(
+            status: status,
+            onEditProfile: onEditProfile,
+            onEditStatus: onEditStatus,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProfileActionButtons extends StatelessWidget {
+  const _ProfileActionButtons({
+    required this.status,
+    required this.onEditProfile,
+    required this.onEditStatus,
+  });
+
+  final GithubUserStatus? status;
+  final VoidCallback onEditProfile;
+  final VoidCallback onEditStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _ProfileActionButton(
+            icon: Icons.edit_outlined,
+            label: '编辑资料',
+            onPressed: onEditProfile,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _ProfileActionButton(
+            icon: Icons.emoji_emotions_outlined,
+            label: status?.isNotEmpty == true ? '修改状态' : '设置状态',
+            onPressed: onEditStatus,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileActionButton extends StatelessWidget {
+  const _ProfileActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: onPressed,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 6),
+            Text(label),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status, this.onTap});
+  final GithubUserStatus status;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final label = [
+      if (status.emoji.isNotEmpty) _displayEmoji(status.emoji),
+      if (status.message.isNotEmpty) status.message,
+    ].join(' ');
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: status.indicatesLimitedAvailability
+              ? cs.tertiaryContainer
+              : cs.surfaceContainerHighest,
+          border: Border.all(color: cs.outlineVariant),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            color: status.indicatesLimitedAvailability
+                ? cs.onTertiaryContainer
+                : cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _displayEmoji(String raw) {
+  final normalized = _canonicalStatusEmoji(raw);
+  return _statusEmojiOptions
+          .where((option) => option.value == normalized)
+          .firstOrNull
+          ?.emoji ??
+      raw.trim();
+}
+
+String _canonicalStatusEmoji(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return '';
+  final match = _statusEmojiOptions.where((option) {
+    return option.value == value ||
+        option.emoji == value ||
+        option.value.replaceAll(':', '') == value.toLowerCase();
+  }).firstOrNull;
+  return match?.value ?? value;
+}
+
+class _StatusEmojiOption {
+  const _StatusEmojiOption({
+    required this.value,
+    required this.emoji,
+    required this.label,
+  });
+
+  final String value;
+  final String emoji;
+  final String label;
+}
+
+const _statusEmojiOptions = [
+  _StatusEmojiOption(value: '', emoji: '·', label: '不显示 Emoji'),
+  _StatusEmojiOption(value: ':palm_tree:', emoji: '🌴', label: '休假'),
+  _StatusEmojiOption(value: ':house:', emoji: '🏠', label: '在家'),
+  _StatusEmojiOption(value: ':office:', emoji: '🏢', label: '办公'),
+  _StatusEmojiOption(value: ':rocket:', emoji: '🚀', label: '推进中'),
+  _StatusEmojiOption(value: ':eyes:', emoji: '👀', label: '关注中'),
+  _StatusEmojiOption(value: ':coffee:', emoji: '☕', label: '喝咖啡'),
+  _StatusEmojiOption(value: ':memo:', emoji: '📝', label: '记录'),
+  _StatusEmojiOption(value: ':computer:', emoji: '💻', label: '编码'),
+  _StatusEmojiOption(value: ':wave:', emoji: '👋', label: '打招呼'),
+  _StatusEmojiOption(value: ':sleeping:', emoji: '😴', label: '休息'),
+];
+
+class _EditProfileDialog extends StatefulWidget {
+  const _EditProfileDialog({required this.user});
+  final GithubUser user;
+
+  @override
+  State<_EditProfileDialog> createState() => _EditProfileDialogState();
+}
+
+class _EditProfileDialogState extends State<_EditProfileDialog> {
+  late final TextEditingController _name;
+  late final TextEditingController _email;
+  late final TextEditingController _blog;
+  late final TextEditingController _twitter;
+  late final TextEditingController _company;
+  late final TextEditingController _location;
+  late final TextEditingController _bio;
+  late bool _hireable;
+  bool _saving = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final user = widget.user;
+    _name = TextEditingController(text: user.name);
+    _email = TextEditingController(text: user.email);
+    _blog = TextEditingController(text: user.blog);
+    _twitter = TextEditingController(text: user.twitterUsername);
+    _company = TextEditingController(text: user.company);
+    _location = TextEditingController(text: user.location);
+    _bio = TextEditingController(text: user.bio);
+    _hireable = user.hireable ?? false;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _blog.dispose();
+    _twitter.dispose();
+    _company.dispose();
+    _location.dispose();
+    _bio.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _error = '';
+    });
+
+    final result = await AuthService.instance.updateCurrentUserProfile(
+      name: _name.text.trim(),
+      email: _email.text.trim(),
+      blog: _blog.text.trim(),
+      twitterUsername: _twitter.text.trim(),
+      company: _company.text.trim(),
+      location: _location.text.trim(),
+      hireable: _hireable,
+      bio: _bio.text.trim(),
+    );
+
+    if (!mounted) return;
+    if (result.success && result.user != null) {
+      Navigator.pop(context, result.user);
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _error = result.message ?? '更新资料失败';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppDialog(
+      title: '编辑资料',
+      icon: Icons.edit_outlined,
+      actions: [
+        AppDialogAction(
+          label: '取消',
+          onPressed: _saving ? null : () => Navigator.pop(context),
+        ),
+        AppDialogAction(
+          label: '保存',
+          isPrimary: true,
+          isLoading: _saving,
+          onPressed: _saving ? null : _save,
+        ),
+      ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ProfileTextField(controller: _name, label: 'Name', hint: '未填写'),
+            _ProfileTextField(
+              controller: _email,
+              label: 'Public email',
+              hint: '未填写',
+            ),
+            _ProfileTextField(controller: _blog, label: 'Blog', hint: '未填写'),
+            _ProfileTextField(
+              controller: _twitter,
+              label: 'Twitter username',
+              hint: '未填写',
+            ),
+            _ProfileTextField(
+              controller: _company,
+              label: 'Company',
+              hint: '未填写',
+            ),
+            _ProfileTextField(
+              controller: _location,
+              label: 'Location',
+              hint: '未填写',
+            ),
+            _ProfileTextField(
+              controller: _bio,
+              label: 'Bio',
+              hint: '未填写',
+              maxLines: 3,
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _hireable,
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(() => _hireable = value ?? false),
+              title: const Text('Available for hire'),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            if (_error.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _error,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditStatusDialog extends StatefulWidget {
+  const _EditStatusDialog({required this.status});
+  final GithubUserStatus? status;
+
+  @override
+  State<_EditStatusDialog> createState() => _EditStatusDialogState();
+}
+
+class _EditStatusDialogState extends State<_EditStatusDialog> {
+  late final TextEditingController _message;
+  late String _selectedEmoji;
+  late bool _limitedAvailability;
+  bool _saving = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedEmoji = _canonicalStatusEmoji(widget.status?.emoji ?? '');
+    _message = TextEditingController(text: widget.status?.message ?? '');
+    _limitedAvailability = widget.status?.indicatesLimitedAvailability ?? false;
+  }
+
+  @override
+  void dispose() {
+    _message.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await _submit(clear: false);
+  }
+
+  Future<void> _clear() async {
+    await _submit(clear: true);
+  }
+
+  Future<void> _submit({required bool clear}) async {
+    if (_saving) return;
+    final shouldClear =
+        clear || (_selectedEmoji.isEmpty && _message.text.trim().isEmpty);
+    setState(() {
+      _saving = true;
+      _error = '';
+    });
+
+    final result = await GitHubApiClient.instance.changeUserStatus(
+      emoji: shouldClear ? '' : _selectedEmoji,
+      message: shouldClear ? '' : _message.text.trim(),
+      limitedAvailability: shouldClear ? false : _limitedAvailability,
+    );
+
+    if (!mounted) return;
+    if (result.success) {
+      Navigator.pop(
+        context,
+        shouldClear ? const GithubUserStatus() : result.data,
+      );
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _error = result.message ?? '更新状态失败';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppDialog(
+      title: '设置状态',
+      icon: Icons.emoji_emotions_outlined,
+      actions: [
+        AppDialogAction(
+          label: '清除',
+          onPressed: _saving ? null : _clear,
+        ),
+        AppDialogAction(
+          label: '取消',
+          onPressed: _saving ? null : () => Navigator.pop(context),
+        ),
+        AppDialogAction(
+          label: '保存',
+          isPrimary: true,
+          isLoading: _saving,
+          onPressed: _saving ? null : _save,
+        ),
+      ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StatusEmojiDropdown(
+              value: _selectedEmoji,
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(() => _selectedEmoji = value ?? ''),
+            ),
+            _ProfileTextField(
+              controller: _message,
+              label: 'Status message',
+              hint: '未填写',
+            ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _limitedAvailability,
+              onChanged: _saving
+                  ? null
+                  : (value) => setState(
+                        () => _limitedAvailability = value ?? false,
+                      ),
+              title: const Text('Busy / limited availability'),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            if (_error.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _error,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusEmojiDropdown extends StatelessWidget {
+  const _StatusEmojiDropdown({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String value;
+  final ValueChanged<String?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DropdownButtonFormField<String>(
+        value: _statusEmojiOptions.any((option) => option.value == value)
+            ? value
+            : '',
+        decoration: InputDecoration(
+          labelText: 'Emoji',
+          border: const OutlineInputBorder(),
+          isDense: true,
+          hintStyle: TextStyle(
+            color: cs.onSurfaceVariant.withAlpha(107),
+          ),
+        ),
+        items: _statusEmojiOptions.map((option) {
+          return DropdownMenuItem(
+            value: option.value,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  child: Text(
+                    option.emoji,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(option.label),
+              ],
+            ),
+          );
+        }).toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+class _ProfileTextField extends StatelessWidget {
+  const _ProfileTextField({
+    required this.controller,
+    required this.label,
+    this.hint,
+    this.maxLines = 1,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String? hint;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          border: const OutlineInputBorder(),
+          isDense: true,
+          hintStyle: TextStyle(
+            color: cs.onSurfaceVariant.withAlpha(107),
+          ),
+          labelStyle: TextStyle(
+            color: cs.onSurfaceVariant.withAlpha(199),
+          ),
+        ),
       ),
     );
   }
@@ -365,8 +991,7 @@ class _InfoSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       if (user.company.isNotEmpty) (Icons.business_outlined, user.company),
-      if (user.location.isNotEmpty)
-        (Icons.location_on_outlined, user.location),
+      if (user.location.isNotEmpty) (Icons.location_on_outlined, user.location),
       if (user.blog.isNotEmpty) (Icons.link, user.blog),
       if (user.email.isNotEmpty) (Icons.email_outlined, user.email),
     ];
@@ -382,9 +1007,8 @@ class _InfoSection extends StatelessWidget {
                     children: [
                       Icon(t.$1,
                           size: 16,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant),
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(t.$2,
@@ -415,8 +1039,7 @@ class _OrgRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('所属组织',
-              style: TextStyle(fontWeight: FontWeight.w600)),
+          const Text('所属组织', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -483,8 +1106,7 @@ class _OrgAvatar extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style:
-                    TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
               ),
             ),
           ],
@@ -497,8 +1119,7 @@ class _OrgAvatar extends StatelessWidget {
 // ── Activity summary card ─────────────────────────────────────────────────────
 
 class _ActivitySummaryCard extends StatelessWidget {
-  const _ActivitySummaryCard(
-      {required this.activity, required this.loading});
+  const _ActivitySummaryCard({required this.activity, required this.loading});
   final UserActivitySummary? activity;
   final bool loading;
 
@@ -524,8 +1145,7 @@ class _ActivitySummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('近期动态',
-              style: TextStyle(fontWeight: FontWeight.w600)),
+          const Text('近期动态', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -535,8 +1155,8 @@ class _ActivitySummaryCard extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    cs.primaryContainer.withValues(alpha: 0.55),
-                    cs.secondaryContainer.withValues(alpha: 0.35),
+                    cs.primaryContainer.withAlpha(140),
+                    cs.secondaryContainer.withAlpha(89),
                   ],
                 ),
               ),
@@ -549,8 +1169,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest
-                            .withValues(alpha: 0.6),
+                        color: cs.surfaceContainerHighest.withAlpha(153),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -576,8 +1195,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                       Container(
                           width: 1,
                           height: 40,
-                          color:
-                              cs.outlineVariant.withValues(alpha: 0.5)),
+                          color: cs.outlineVariant.withAlpha(128)),
                       Expanded(
                         child: _ActivityMetric(
                           value: activity!.repoCount,
@@ -589,8 +1207,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                       Container(
                           width: 1,
                           height: 40,
-                          color:
-                              cs.outlineVariant.withValues(alpha: 0.5)),
+                          color: cs.outlineVariant.withAlpha(128)),
                       Expanded(
                         child: _ActivityMetric(
                           value: activity!.prCount,
@@ -667,8 +1284,7 @@ class _PinnedReposCarousel extends StatefulWidget {
   final bool isTopRepos;
 
   @override
-  State<_PinnedReposCarousel> createState() =>
-      _PinnedReposCarouselState();
+  State<_PinnedReposCarousel> createState() => _PinnedReposCarouselState();
 }
 
 class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
@@ -724,16 +1340,14 @@ class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
                   curve: Curves.easeOut,
                   scale: _currentPage == i ? 1.0 : 0.94,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     child: _PinnedRepoCard(
                       repo: widget.repos[i],
                       onTap: () {
-                        final parts =
-                            widget.repos[i].fullName.split('/');
+                        final parts = widget.repos[i].fullName.split('/');
                         if (parts.length == 2) {
-                          context.push(
-                              '/repository/${parts[0]}/${parts[1]}');
+                          context.push('/repository/${parts[0]}/${parts[1]}');
                         }
                       },
                     ),
@@ -779,8 +1393,7 @@ class _PinnedRepoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final langColor = repo.languageColor.isNotEmpty
-        ? Color(int.tryParse(
-                repo.languageColor.replaceFirst('#', '0xFF')) ??
+        ? Color(int.tryParse(repo.languageColor.replaceFirst('#', '0xFF')) ??
             0xFF8b949e)
         : cs.onSurfaceVariant;
 
@@ -864,150 +1477,313 @@ class _PinnedRepoCard extends StatelessWidget {
       n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 }
 
-// ── Menu section ──────────────────────────────────────────────────────────────
+// ── Social section ───────────────────────────────────────────────────────────
 
-class _MenuSection extends StatelessWidget {
-  const _MenuSection({
-    required this.onMyRepos,
-    required this.onStarred,
-    required this.onSettings,
-    required this.onLogout,
-    required this.themeService,
+class _SocialSection extends StatefulWidget {
+  const _SocialSection({
+    required this.username,
+    required this.followers,
+    required this.following,
+    required this.followersCount,
+    required this.followingCount,
+    required this.loading,
+    required this.error,
+    required this.onRetry,
   });
-  final VoidCallback onMyRepos;
-  final VoidCallback onStarred;
-  final VoidCallback onSettings;
-  final VoidCallback onLogout;
-  final ThemeService themeService;
+  final String username;
+  final List<GithubUser> followers;
+  final List<GithubUser> following;
+  final int followersCount;
+  final int followingCount;
+  final bool loading;
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  State<_SocialSection> createState() => _SocialSectionState();
+}
+
+class _SocialSectionState extends State<_SocialSection> {
+  int _selectedIndex = 0;
+
+  List<GithubUser> get _visibleUsers =>
+      _selectedIndex == 0 ? widget.followers : widget.following;
+  int get _visibleTotal =>
+      _selectedIndex == 0 ? widget.followersCount : widget.followingCount;
+  String get _visibleType => _selectedIndex == 0 ? 'followers' : 'following';
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Material(
+          color: cs.surfaceContainer,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.person_outline, size: 20, color: cs.onSurface),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '社交',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _SocialTabs(
+                  selectedIndex: _selectedIndex,
+                  followersCount: widget.followersCount,
+                  followingCount: widget.followingCount,
+                  onSelected: (index) => setState(() => _selectedIndex = index),
+                ),
+                if (widget.loading)
+                  const _SocialLoading()
+                else if (widget.error.isNotEmpty && _visibleUsers.isEmpty)
+                  _SocialError(message: widget.error, onRetry: widget.onRetry)
+                else if (_visibleUsers.isEmpty)
+                  _SocialEmpty(isFollowers: _selectedIndex == 0)
+                else
+                  Column(
+                    children: [
+                      for (final user in _visibleUsers)
+                        _SocialUserTile(
+                          user: user,
+                          onTap: () => context.push('/user/${user.login}'),
+                        ),
+                      if (_visibleTotal > _visibleUsers.length)
+                        _SocialMoreTile(
+                          onTap: () => context
+                              .push('/social/${widget.username}/$_visibleType'),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SocialTabs extends StatelessWidget {
+  const _SocialTabs({
+    required this.selectedIndex,
+    required this.followersCount,
+    required this.followingCount,
+    required this.onSelected,
+  });
+  final int selectedIndex;
+  final int followersCount;
+  final int followingCount;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: cs.outlineVariant)),
+      ),
+      child: Row(
         children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child:
-                Text('内容', style: TextStyle(fontWeight: FontWeight.w600)),
+          _SocialTab(
+            title: '关注者',
+            count: followersCount,
+            selected: selectedIndex == 0,
+            onTap: () => onSelected(0),
           ),
-          _MenuCard(children: [
-            _MenuTile(
-                icon: Icons.source_outlined,
-                label: '我的仓库',
-                onTap: onMyRepos),
-            const Divider(height: 1, indent: 48),
-            _MenuTile(
-                icon: Icons.star_border,
-                label: 'Star 仓库',
-                onTap: onStarred),
-          ]),
-          const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.only(bottom: 8),
-            child:
-                Text('设置', style: TextStyle(fontWeight: FontWeight.w600)),
+          _SocialTab(
+            title: '正在关注',
+            count: followingCount,
+            selected: selectedIndex == 1,
+            onTap: () => onSelected(1),
           ),
-          _MenuCard(children: [
-            _ThemeToggleTile(themeService: themeService),
-            const Divider(height: 1, indent: 48),
-            _MenuTile(
-                icon: Icons.settings_outlined,
-                label: '应用设置',
-                onTap: onSettings),
-          ]),
-          const SizedBox(height: 16),
-          _MenuCard(children: [
-            _MenuTile(
-                icon: Icons.logout,
-                label: '退出登录',
-                color: cs.error,
-                onTap: onLogout),
-          ]),
         ],
       ),
     );
   }
 }
 
-class _MenuCard extends StatelessWidget {
-  const _MenuCard({required this.children});
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Material(
-          color: Theme.of(context).colorScheme.surfaceContainer,
-          child: Column(children: children),
-        ),
-      );
-}
-
-class _MenuTile extends StatelessWidget {
-  const _MenuTile({
-    required this.icon,
-    required this.label,
+class _SocialTab extends StatelessWidget {
+  const _SocialTab({
+    required this.title,
+    required this.count,
+    required this.selected,
     required this.onTap,
-    this.color,
   });
-  final IconData icon;
-  final String label;
+  final String title;
+  final int count;
+  final bool selected;
   final VoidCallback onTap;
-  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final effective = color ?? Theme.of(context).colorScheme.onSurface;
-    return ListTile(
-      leading: Icon(icon, color: effective),
-      title: Text(label, style: TextStyle(color: effective)),
-      trailing: const Icon(Icons.chevron_right, size: 18),
-      onTap: onTap,
-      dense: true,
+    final cs = Theme.of(context).colorScheme;
+    final color = selected ? cs.primary : cs.onSurfaceVariant;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$title ($count)',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 15,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                height: 3,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: selected ? cs.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _ThemeToggleTile extends StatefulWidget {
-  const _ThemeToggleTile({required this.themeService});
-  final ThemeService themeService;
+class _SocialUserTile extends StatelessWidget {
+  const _SocialUserTile({required this.user, required this.onTap});
+  final GithubUser user;
+  final VoidCallback onTap;
 
-  @override
-  State<_ThemeToggleTile> createState() => _ThemeToggleTileState();
-}
-
-class _ThemeToggleTileState extends State<_ThemeToggleTile> {
   @override
   Widget build(BuildContext context) {
-    final mode = widget.themeService.themeMode;
-    const modeLabels = {
-      ThemeMode2.auto: '跟随系统',
-      ThemeMode2.light: '浅色',
-      ThemeMode2.dark: '深色',
-    };
-    return ListTile(
-      leading: const Icon(Icons.brightness_6_outlined),
-      title: const Text('外观'),
-      trailing: DropdownButton<ThemeMode2>(
-        value: mode,
-        underline: const SizedBox.shrink(),
-        items: ThemeMode2.values.map((m) {
-          return DropdownMenuItem(
-            value: m,
-            child: Text(modeLabels[m] ?? m.name),
-          );
-        }).toList(),
-        onChanged: (v) {
-          if (v != null) {
-            widget.themeService.setThemeMode(v);
-            setState(() {});
-          }
-        },
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: user.avatarUrl,
+                width: 44,
+                height: 44,
+                placeholder: (_, __) => Container(
+                  width: 44,
+                  height: 44,
+                  color: cs.surfaceContainerHighest,
+                ),
+                errorWidget: (_, __, ___) =>
+                    Icon(Icons.account_circle, size: 44, color: cs.outline),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                user.name.isNotEmpty ? user.name : user.login,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Icon(Icons.arrow_forward, size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
       ),
-      dense: true,
+    );
+  }
+}
+
+class _SocialMoreTile extends StatelessWidget {
+  const _SocialMoreTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '查看全部',
+              style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.arrow_forward, size: 16, color: cs.primary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SocialLoading extends StatelessWidget {
+  const _SocialLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 152,
+      child: Center(
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+  }
+}
+
+class _SocialError extends StatelessWidget {
+  const _SocialError({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return ApiErrorView(
+      message: message,
+      onRetry: onRetry,
+      title: '社交信息加载失败',
+      compact: true,
+    );
+  }
+}
+
+class _SocialEmpty extends StatelessWidget {
+  const _SocialEmpty({required this.isFollowers});
+  final bool isFollowers;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 152,
+      child: Center(
+        child: Text(
+          isFollowers ? '暂无关注者' : '暂无正在关注',
+          style:
+              TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ),
     );
   }
 }

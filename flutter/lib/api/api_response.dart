@@ -1,3 +1,5 @@
+import '../utils/api_error_message.dart';
+
 /// Generic response wrapper mirroring the harmony APIResponse\<T\>
 class ApiResponse<T> {
   final bool success;
@@ -12,11 +14,19 @@ class ApiResponse<T> {
     this.message,
   });
 
-  factory ApiResponse.ok(T data) =>
-      ApiResponse(success: true, data: data);
+  factory ApiResponse.ok(T data) => ApiResponse(success: true, data: data);
 
-  factory ApiResponse.fail(String error, {String? message}) =>
-      ApiResponse(success: false, error: error, message: message ?? error);
+  factory ApiResponse.fail(String error, {String? message}) {
+    final friendlyMessage = friendlyApiErrorMessage(
+      message ?? error,
+      fallback: '请求失败，请稍后重试',
+    );
+    return ApiResponse(
+      success: false,
+      error: error,
+      message: friendlyMessage,
+    );
+  }
 
   bool get isSuccess => success && data != null;
 }

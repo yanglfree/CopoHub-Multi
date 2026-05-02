@@ -8,6 +8,7 @@ import '../../models/pinned_repository.dart';
 import '../../models/user.dart';
 import '../../models/repository.dart';
 import '../../models/user_activity.dart';
+import '../../models/user_status.dart';
 import '../../services/auth_service.dart';
 import '../../services/share_service.dart';
 import '../../utils/constants.dart';
@@ -44,6 +45,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   UserActivitySummary? _activity;
   bool _activityLoading = true;
+  GithubUserStatus? _status;
 
   bool get _isCurrentUser =>
       AuthService.instance.currentUser?.login == widget.username;
@@ -74,6 +76,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       _loadOrgs();
       _loadPinnedRepos();
       _loadActivity();
+      _loadStatus();
     } else {
       setState(() {
         _userError = result.message ?? '加载失败';
@@ -183,6 +186,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
   }
 
+  Future<void> _loadStatus() async {
+    final result = await _api.getUserStatus(widget.username);
+    if (!mounted) return;
+    if (result.success) {
+      setState(() => _status = result.data);
+    }
+  }
+
   Future<void> _toggleFollow() async {
     if (_followActionLoading) return;
     setState(() => _followActionLoading = true);
@@ -240,7 +251,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
             // App bar
             SliverAppBar(
               pinned: true,
-              expandedHeight: 260,
+              title: Text(
+                user.name.isNotEmpty ? user.name : user.login,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.share_outlined),
@@ -251,15 +267,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   ),
                 ),
               ],
-              flexibleSpace: FlexibleSpaceBar(
-                collapseMode: CollapseMode.pin,
-                background: _UserHeader(
-                  user: user,
-                  isCurrentUser: _isCurrentUser,
-                  isFollowing: _isFollowing,
-                  followLoading: _followActionLoading,
-                  onFollow: _toggleFollow,
-                ),
+            ),
+
+            SliverToBoxAdapter(
+              child: _UserHeader(
+                user: user,
+                status: _status,
+                isCurrentUser: _isCurrentUser,
+                isFollowing: _isFollowing,
+                followLoading: _followActionLoading,
+                onFollow: _toggleFollow,
               ),
             ),
 
@@ -288,7 +305,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                child: ContributionCalendar(username: widget.username),
+                child: ContributionCalendar(
+                  username: widget.username,
+                  showThemeMenu: false,
+                ),
               ),
             ),
 
@@ -375,12 +395,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
 class _UserHeader extends StatelessWidget {
   const _UserHeader({
     required this.user,
+    required this.status,
     required this.isCurrentUser,
     required this.isFollowing,
     required this.followLoading,
     required this.onFollow,
   });
   final GithubUser user;
+  final GithubUserStatus? status;
   final bool isCurrentUser;
   final bool isFollowing;
   final bool followLoading;
@@ -397,7 +419,7 @@ class _UserHeader extends StatelessWidget {
           colors: [cs.surfaceContainer, cs.surface],
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 80, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -410,9 +432,7 @@ class _UserHeader extends StatelessWidget {
                   width: 72,
                   height: 72,
                   placeholder: (_, __) => Container(
-                      width: 72,
-                      height: 72,
-                      color: cs.surfaceContainerHighest),
+                      width: 72, height: 72, color: cs.surfaceContainerHighest),
                   errorWidget: (_, __, ___) =>
                       const Icon(Icons.account_circle, size: 72),
                 ),
@@ -437,12 +457,19 @@ class _UserHeader extends StatelessWidget {
           ),
           if (user.name.isNotEmpty)
             Text(user.login,
-                style:
-                    TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+          if (status?.isNotEmpty == true) ...[
+            const SizedBox(height: 6),
+            _StatusPill(status: status!),
+          ],
           if (user.bio.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(user.bio,
-                style: const TextStyle(fontSize: 13, height: 1.4)),
+            Text(
+              user.bio,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, height: 1.4),
+            ),
           ],
           const SizedBox(height: 6),
           Wrap(
@@ -450,12 +477,10 @@ class _UserHeader extends StatelessWidget {
             runSpacing: 2,
             children: [
               if (user.company.isNotEmpty)
-                _MetaChip(
-                    icon: Icons.business_outlined, label: user.company),
+                _MetaChip(icon: Icons.business_outlined, label: user.company),
               if (user.location.isNotEmpty)
                 _MetaChip(
-                    icon: Icons.location_on_outlined,
-                    label: user.location),
+                    icon: Icons.location_on_outlined, label: user.location),
               if (user.blog.isNotEmpty)
                 _MetaChip(icon: Icons.link_outlined, label: user.blog),
               if (user.email.isNotEmpty)
@@ -466,6 +491,59 @@ class _UserHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status});
+  final GithubUserStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final label = [
+      if (status.emoji.isNotEmpty) _displayEmoji(status.emoji),
+      if (status.message.isNotEmpty) status.message,
+    ].join(' ');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: status.indicatesLimitedAvailability
+            ? cs.tertiaryContainer
+            : cs.surfaceContainerHighest,
+        border: Border.all(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 12,
+          color: status.indicatesLimitedAvailability
+              ? cs.onTertiaryContainer
+              : cs.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+String _displayEmoji(String raw) {
+  const named = {
+    ':palm_tree:': '🌴',
+    ':house:': '🏠',
+    ':office:': '🏢',
+    ':rocket:': '🚀',
+    ':eyes:': '👀',
+    ':coffee:': '☕',
+    ':memo:': '📝',
+    ':computer:': '💻',
+    ':wave:': '👋',
+    ':sleeping:': '😴',
+  };
+  return named[raw] ?? raw;
 }
 
 class _MetaChip extends StatelessWidget {
@@ -479,8 +557,7 @@ class _MetaChip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon,
-            size: 13,
-            color: Theme.of(context).colorScheme.onSurfaceVariant),
+            size: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
         const SizedBox(width: 3),
         Flexible(
           child: Text(
@@ -548,15 +625,13 @@ class _StatItem extends StatelessWidget {
           children: [
             Text(
               _fmt(value),
-              style:
-                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
             const SizedBox(height: 2),
             Text(label,
                 style: TextStyle(
                     fontSize: 12,
-                    color:
-                        Theme.of(context).colorScheme.onSurfaceVariant)),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         ),
       ),
@@ -641,8 +716,8 @@ class _OrgAvatar extends StatelessWidget {
                   height: 44,
                   placeholder: (_, __) =>
                       Container(color: cs.surfaceContainerHighest),
-                  errorWidget: (_, __, ___) =>
-                      Icon(Icons.business, size: 22, color: cs.onSurfaceVariant),
+                  errorWidget: (_, __, ___) => Icon(Icons.business,
+                      size: 22, color: cs.onSurfaceVariant),
                 ),
               ),
             ),
@@ -654,8 +729,7 @@ class _OrgAvatar extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 10, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
               ),
             ),
           ],
@@ -700,13 +774,13 @@ class _ActivitySummaryCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              cs.primaryContainer.withValues(alpha: 0.55),
-              cs.secondaryContainer.withValues(alpha: 0.35),
+              cs.primaryContainer.withOpacity(0.55),
+              cs.secondaryContainer.withOpacity(0.35),
             ],
           ),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.6), width: 1),
+          border:
+              Border.all(color: cs.outlineVariant.withOpacity(0.6), width: 1),
         ),
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
         child: Column(
@@ -727,7 +801,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+                    color: cs.surfaceContainerHighest.withOpacity(0.6),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -752,7 +826,9 @@ class _ActivitySummaryCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                    width: 1, height: 40, color: cs.outlineVariant.withValues(alpha: 0.5)),
+                    width: 1,
+                    height: 40,
+                    color: cs.outlineVariant.withOpacity(0.5)),
                 Expanded(
                   child: _ActivityMetric(
                     value: activity!.repoCount,
@@ -762,7 +838,9 @@ class _ActivitySummaryCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                    width: 1, height: 40, color: cs.outlineVariant.withValues(alpha: 0.5)),
+                    width: 1,
+                    height: 40,
+                    color: cs.outlineVariant.withOpacity(0.5)),
                 Expanded(
                   child: _ActivityMetric(
                     value: activity!.prCount,
@@ -826,14 +904,12 @@ class _ActivityMetric extends StatelessWidget {
 // ── Pinned repos carousel ─────────────────────────────────────────────────────
 
 class _PinnedReposCarousel extends StatefulWidget {
-  const _PinnedReposCarousel(
-      {required this.repos, required this.username});
+  const _PinnedReposCarousel({required this.repos, required this.username});
   final List<PinnedRepository> repos;
   final String username;
 
   @override
-  State<_PinnedReposCarousel> createState() =>
-      _PinnedReposCarouselState();
+  State<_PinnedReposCarousel> createState() => _PinnedReposCarouselState();
 }
 
 class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
@@ -885,16 +961,14 @@ class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
                 curve: Curves.easeOut,
                 scale: _currentPage == i ? 1.0 : 0.94,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   child: _PinnedRepoCard(
                     repo: widget.repos[i],
                     onTap: () {
-                      final parts =
-                          widget.repos[i].fullName.split('/');
+                      final parts = widget.repos[i].fullName.split('/');
                       if (parts.length == 2) {
-                        context.push(
-                            '/repository/${parts[0]}/${parts[1]}');
+                        context.push('/repository/${parts[0]}/${parts[1]}');
                       }
                     },
                   ),
@@ -920,9 +994,7 @@ class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
                   borderRadius: BorderRadius.circular(3),
                   color: _currentPage == i
                       ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context)
-                          .colorScheme
-                          .outlineVariant,
+                      : Theme.of(context).colorScheme.outlineVariant,
                 ),
               ),
             ),
@@ -943,8 +1015,7 @@ class _PinnedRepoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final langColor = repo.languageColor.isNotEmpty
-        ? Color(int.tryParse(
-                repo.languageColor.replaceFirst('#', '0xFF')) ??
+        ? Color(int.tryParse(repo.languageColor.replaceFirst('#', '0xFF')) ??
             0xFF8b949e)
         : cs.onSurfaceVariant;
 
@@ -1046,8 +1117,7 @@ class _RepoTile extends StatelessWidget {
         InkWell(
           onTap: onTap,
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 Expanded(
@@ -1089,25 +1159,20 @@ class _RepoTile extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(repo.language,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall),
+                                style: Theme.of(context).textTheme.bodySmall),
                             const SizedBox(width: 10),
                           ],
                           const Icon(Icons.star_border, size: 13),
                           const SizedBox(width: 2),
                           Text(_fmt(repo.stargazersCount),
-                              style:
-                                  Theme.of(context).textTheme.bodySmall),
+                              style: Theme.of(context).textTheme.bodySmall),
                           if (repo.fork) ...[
                             const SizedBox(width: 10),
                             Icon(Icons.fork_right,
-                                size: 13,
-                                color: cs.onSurfaceVariant),
+                                size: 13, color: cs.onSurfaceVariant),
                             Text(' Fork',
                                 style: TextStyle(
-                                    fontSize: 11,
-                                    color: cs.onSurfaceVariant)),
+                                    fontSize: 11, color: cs.onSurfaceVariant)),
                           ],
                         ],
                       ),
@@ -1116,16 +1181,15 @@ class _RepoTile extends StatelessWidget {
                 ),
                 if (repo.private)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       border: Border.all(color: cs.outlineVariant),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text('Private',
                         style: TextStyle(
-                            fontSize: 10,
-                            color: cs.onSurfaceVariant)),
+                            fontSize: 10, color: cs.onSurfaceVariant)),
                   ),
               ],
             ),

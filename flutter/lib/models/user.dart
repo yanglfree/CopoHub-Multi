@@ -14,6 +14,8 @@ class GithubUser {
   final String location;
   final String email;
   final String bio;
+  final bool? hireable;
+  final String twitterUsername;
   final int publicRepos;
   final int publicGists;
   final int followers;
@@ -37,6 +39,8 @@ class GithubUser {
     this.location = '',
     this.email = '',
     this.bio = '',
+    this.hireable,
+    this.twitterUsername = '',
     this.publicRepos = 0,
     this.publicGists = 0,
     this.followers = 0,
@@ -62,6 +66,8 @@ class GithubUser {
       location: json['location'] as String? ?? '',
       email: json['email'] as String? ?? '',
       bio: json['bio'] as String? ?? '',
+      hireable: json['hireable'] as bool?,
+      twitterUsername: json['twitter_username'] as String? ?? '',
       publicRepos: json['public_repos'] as int? ?? 0,
       publicGists: json['public_gists'] as int? ?? 0,
       followers: json['followers'] as int? ?? 0,
@@ -87,6 +93,8 @@ class GithubUser {
         'location': location,
         'email': email,
         'bio': bio,
+        'hireable': hireable,
+        'twitter_username': twitterUsername,
         'public_repos': publicRepos,
         'public_gists': publicGists,
         'followers': followers,
@@ -111,6 +119,8 @@ class GithubUser {
     String? location,
     String? email,
     String? bio,
+    bool? hireable,
+    String? twitterUsername,
     int? publicRepos,
     int? publicGists,
     int? followers,
@@ -134,6 +144,8 @@ class GithubUser {
       location: location ?? this.location,
       email: email ?? this.email,
       bio: bio ?? this.bio,
+      hireable: hireable ?? this.hireable,
+      twitterUsername: twitterUsername ?? this.twitterUsername,
       publicRepos: publicRepos ?? this.publicRepos,
       publicGists: publicGists ?? this.publicGists,
       followers: followers ?? this.followers,

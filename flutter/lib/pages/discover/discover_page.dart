@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
 import '../../models/repository.dart';
+import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../utils/constants.dart';
 
 /// "发现" tab — Popular / Trending / Latest repos from GitHub search.
@@ -16,15 +17,28 @@ class DiscoverPage extends StatefulWidget {
 class _DiscoverPageState extends State<DiscoverPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
+  final _nestedKey = GlobalKey<NestedScrollViewState>();
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 3, vsync: this);
+    _tab.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (_tab.indexIsChanging) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final innerCtrl = _nestedKey.currentState?.innerController;
+      if (innerCtrl != null && innerCtrl.hasClients) {
+        innerCtrl.jumpTo(0);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _tab.removeListener(_onTabChanged);
     _tab.dispose();
     super.dispose();
   }
@@ -33,6 +47,7 @@ class _DiscoverPageState extends State<DiscoverPage>
   Widget build(BuildContext context) {
     return Scaffold(
       body: NestedScrollView(
+        key: _nestedKey,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
             pinned: true,
@@ -149,7 +164,7 @@ class _RepoSearchTabState extends State<_RepoSearchTab>
   Widget build(BuildContext context) {
     super.build(context);
     if (_loading && _repos.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const RepoListSkeleton();
     }
     if (_error.isNotEmpty && _repos.isEmpty) {
       return _ErrorView(message: _error, onRetry: () => _load(refresh: true));

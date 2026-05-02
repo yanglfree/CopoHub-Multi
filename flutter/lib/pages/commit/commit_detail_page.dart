@@ -206,6 +206,7 @@ class _CommitHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
       margin: const EdgeInsets.all(12),
       child: Padding(
@@ -268,11 +269,15 @@ class _CommitHeader extends StatelessWidget {
               children: [
                 _StatChip(
                     label: '+$additions',
-                    color: const Color(0xFF1a7f37)),
+                    color: isDark
+                        ? const Color(0xFF3FB950)
+                        : const Color(0xFF1a7f37)),
                 const SizedBox(width: 8),
                 _StatChip(
                     label: '-$deletions',
-                    color: const Color(0xFFcf222e)),
+                    color: isDark
+                        ? const Color(0xFFF85149)
+                        : const Color(0xFFcf222e)),
                 const SizedBox(width: 8),
                 _StatChip(
                     label: '$filesCount 文件',
@@ -330,16 +335,16 @@ class _FileTile extends StatelessWidget {
   final Map<String, dynamic> file;
   final VoidCallback onTap;
 
-  Color _statusColor(String status) {
+  Color _statusColor(String status, bool isDark) {
     switch (status) {
       case 'added':
-        return const Color(0xFF1a7f37);
+        return isDark ? const Color(0xFF3FB950) : const Color(0xFF1a7f37);
       case 'removed':
-        return const Color(0xFFcf222e);
+        return isDark ? const Color(0xFFF85149) : const Color(0xFFcf222e);
       case 'renamed':
-        return const Color(0xFF9a6700);
+        return isDark ? const Color(0xFFD29922) : const Color(0xFF9a6700);
       default:
-        return const Color(0xFF0969da);
+        return isDark ? const Color(0xFF79c0ff) : const Color(0xFF0969da);
     }
   }
 
@@ -359,13 +364,14 @@ class _FileTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final filename = file['filename'] as String? ?? '';
     final status = file['status'] as String? ?? 'modified';
     final additions = file['additions'] as int? ?? 0;
     final deletions = file['deletions'] as int? ?? 0;
     final patch = file['patch'] as String?;
 
-    final statusColor = _statusColor(status);
+    final statusColor = _statusColor(status, isDark);
     final label = _statusLabel(status);
 
     return Column(
@@ -406,15 +412,19 @@ class _FileTile extends StatelessWidget {
                 // +/- stats
                 const SizedBox(width: 8),
                 Text('+$additions',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF1a7f37),
+                        color: isDark
+                            ? const Color(0xFF3FB950)
+                            : const Color(0xFF1a7f37),
                         fontFamily: 'monospace')),
                 const SizedBox(width: 4),
                 Text('-$deletions',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFFcf222e),
+                        color: isDark
+                            ? const Color(0xFFF85149)
+                            : const Color(0xFFcf222e),
                         fontFamily: 'monospace')),
                 if (patch != null) ...[
                   const SizedBox(width: 6),
