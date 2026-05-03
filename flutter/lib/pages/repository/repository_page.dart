@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -47,6 +45,7 @@ class _RepositoryPageState extends State<RepositoryPage>
   late final TabController _tab;
   late final List<int> _tabScrollResetVersions;
   int _activeTabIndex = 0;
+  final GlobalKey<NestedScrollViewState> _nestedScrollKey = GlobalKey();
 
   @override
   void initState() {
@@ -75,6 +74,18 @@ class _RepositoryPageState extends State<RepositoryPage>
     setState(() {
       _activeTabIndex = _tab.index;
       _tabScrollResetVersions[_activeTabIndex]++;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = _nestedScrollKey.currentState;
+      if (state == null) return;
+      final outer = state.outerController;
+      final inner = state.innerController;
+      if (!outer.hasClients || !inner.hasClients) return;
+      // jumpTo on innerController takes the combined unnested offset, so
+      // pass outer's current pixels — this keeps the header where it is
+      // (preserving the pinned-tab state) while resetting inner content
+      // to 0 so the freshly selected tab starts from the top.
+      inner.jumpTo(outer.position.pixels);
     });
   }
 
@@ -182,6 +193,7 @@ class _RepositoryPageState extends State<RepositoryPage>
 
     return Scaffold(
       body: NestedScrollView(
+        key: _nestedScrollKey,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           SliverAppBar(
             pinned: true,
@@ -566,6 +578,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
   bool _hasError = false;
   bool _readmeHtmlLoaded = false;
   String? _cachedMarkdown;
+  double? _contentHeight;
 
   @override
   bool get wantKeepAlive => true;
@@ -574,8 +587,19 @@ class _ReadmeTabState extends State<_ReadmeTab>
   void initState() {
     super.initState();
     _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.disabled)
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
+      ..addJavaScriptChannel(
+        'FlutterReadmeHeight',
+        onMessageReceived: (message) {
+          final h = double.tryParse(message.message);
+          if (h == null || !mounted) return;
+          if (_contentHeight != null && (_contentHeight! - h).abs() < 1) {
+            return;
+          }
+          setState(() => _contentHeight = h);
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: (request) {
@@ -638,6 +662,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
       _readmePath = 'README.md';
       _downloadUrl = '';
       _htmlUrl = '';
+      _contentHeight = null;
     });
 
     final result = await _api.getRepositoryReadme(
@@ -691,6 +716,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
       final html =
           _buildHtmlDocument(_rewriteRenderedHtml(_sanitizeHtml(result.data!)));
       _readmeHtmlLoaded = false;
+      _contentHeight = null;
       await _webViewController.loadHtmlString(html);
       if (!mounted) return;
       setState(() {
@@ -734,16 +760,18 @@ class _ReadmeTabState extends State<_ReadmeTab>
         ),
       );
     }
-    return WebViewWidget(
+    final viewportHeight = MediaQuery.of(context).size.height;
+    final height = _contentHeight ?? viewportHeight;
+    return SingleChildScrollView(
       key: PageStorageKey<String>(
-        'repository-readme-webview-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
+        'repository-readme-scroll-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
       ),
-      controller: _webViewController,
-      gestureRecognizers: {
-        Factory<VerticalDragGestureRecognizer>(
-          () => VerticalDragGestureRecognizer(),
+      child: SizedBox(
+        height: height,
+        child: WebViewWidget(
+          controller: _webViewController,
         ),
-      },
+      ),
     );
   }
 
@@ -821,19 +849,18 @@ class _ReadmeTabState extends State<_ReadmeTab>
     html, body {
       margin: 0;
       padding: 0;
-      min-height: 100%;
+      height: auto;
       background: var(--bg);
       color: var(--fg);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 15px;
       line-height: 1.55;
+      overflow: visible;
     }
     body {
       padding: 16px 24px 28px;
       overflow-x: hidden;
-      overflow-y: auto;
       overflow-wrap: break-word;
-      -webkit-overflow-scrolling: touch;
     }
     a { color: var(--link); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -893,6 +920,38 @@ class _ReadmeTabState extends State<_ReadmeTab>
   <main class="markdown-body">
     $bodyHtml
   </main>
+  <script>
+    (function () {
+      function reportHeight() {
+        try {
+          var h = Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight,
+            document.documentElement.offsetHeight,
+            document.body.offsetHeight
+          );
+          if (window.FlutterReadmeHeight && window.FlutterReadmeHeight.postMessage) {
+            window.FlutterReadmeHeight.postMessage(String(h));
+          }
+        } catch (e) {}
+      }
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        reportHeight();
+      } else {
+        document.addEventListener('DOMContentLoaded', reportHeight);
+      }
+      window.addEventListener('load', reportHeight);
+      if (window.ResizeObserver) {
+        try { new ResizeObserver(reportHeight).observe(document.body); } catch (e) {}
+      }
+      Array.prototype.forEach.call(document.images || [], function (img) {
+        if (!img.complete) {
+          img.addEventListener('load', reportHeight);
+          img.addEventListener('error', reportHeight);
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
 ''';

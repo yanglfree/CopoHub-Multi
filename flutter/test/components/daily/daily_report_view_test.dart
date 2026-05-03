@@ -65,7 +65,9 @@ Top project: mattpocock/skills.
   test('linkifyDailyReportRepositories adds application repository links', () {
     final markdown = linkifyDailyReportRepositories(
       'Top project: mattpocock/skills.\n\n'
-      '### 1. **TradingAgents**（TauricResearch） | ⭐ +2115 | Python',
+      '### 1. **TradingAgents**（TauricResearch） | ⭐ +2115 | Python\n\n'
+      '- **ruflo（TypeScript）**：enterprise agent platform.\n\n'
+      '`TradingAgents` is hot.',
       [
         const DailyReportRepositoryRef(
           owner: 'mattpocock',
@@ -74,6 +76,10 @@ Top project: mattpocock/skills.
         const DailyReportRepositoryRef(
           owner: 'TauricResearch',
           name: 'TradingAgents',
+        ),
+        const DailyReportRepositoryRef(
+          owner: 'anthropics',
+          name: 'ruflo',
         ),
       ],
     );
@@ -90,6 +96,30 @@ Top project: mattpocock/skills.
         '**[TradingAgents](copohub://repository/TauricResearch/TradingAgents)**（TauricResearch）',
       ),
     );
+    expect(
+      markdown,
+      contains(
+        '[`TradingAgents`](copohub://repository/TauricResearch/TradingAgents)',
+      ),
+    );
+    expect(
+      markdown,
+      contains(
+        '**[ruflo](copohub://repository/anthropics/ruflo)（TypeScript）**',
+      ),
+    );
+  });
+
+  test('linkifyDailyReportRepositories skips ambiguous short names', () {
+    final markdown = linkifyDailyReportRepositories(
+      '`skills` appears in two repositories.',
+      [
+        const DailyReportRepositoryRef(owner: 'mattpocock', name: 'skills'),
+        const DailyReportRepositoryRef(owner: 'browserbase', name: 'skills'),
+      ],
+    );
+
+    expect(markdown, '`skills` appears in two repositories.');
   });
 
   test('repositoryRouteFromLink maps report links to in-app routes', () {
@@ -100,6 +130,24 @@ Top project: mattpocock/skills.
     expect(
       repositoryRouteFromLink('https://github.com/warpdotdev/warp'),
       '/repository/warpdotdev/warp',
+    );
+  });
+
+  test('dailyReportWithRepositoryData fills missing top repositories', () {
+    final report = dailyReportWithRepositoryData(
+      {'summary': 'Report'},
+      [
+        {'owner': 'simstudioai', 'name': 'sim'},
+      ],
+    );
+
+    expect(report['top_repositories'], hasLength(1));
+    expect(
+      repositoryRefFromData(
+        (report['top_repositories'] as List<dynamic>).first
+            as Map<String, dynamic>,
+      )?.fullName,
+      'simstudioai/sim',
     );
   });
 }

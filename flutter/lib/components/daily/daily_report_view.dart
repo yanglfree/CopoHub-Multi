@@ -109,10 +109,12 @@ List<DailyReportRepositoryRef> extractDailyReportRepositoryRefs(
   final refs = <String, DailyReportRepositoryRef>{};
 
   void add(String owner, String name) {
-    if (!_isValidRepositoryPart(owner) || !_isValidRepositoryPart(name)) {
+    final normalizedName = _stripTrailingRepositoryPunctuation(name);
+    if (!_isValidRepositoryPart(owner) ||
+        !_isValidRepositoryPart(normalizedName)) {
       return;
     }
-    final ref = DailyReportRepositoryRef(owner: owner, name: name);
+    final ref = DailyReportRepositoryRef(owner: owner, name: normalizedName);
     refs.putIfAbsent(ref.fullName, () => ref);
   }
 
@@ -147,30 +149,43 @@ String linkifyDailyReportRepositories(
   var linked = markdown;
   final sortedRefs = refs.toList()
     ..sort((a, b) => b.fullName.length.compareTo(a.fullName.length));
+  final uniqueNameRefs = _uniqueRepositoryNameRefs(sortedRefs);
 
   for (final ref in sortedRefs) {
     final owner = RegExp.escape(ref.owner);
     final name = RegExp.escape(ref.name);
-    final headingPattern = RegExp(r'\*\*(' +
-        name +
-        r')\*\*([（(])(' +
-        owner +
-        r')([）)])');
+    final headingPattern =
+        RegExp(r'\*\*(' + name + r')\*\*([（(])(' + owner + r')([）)])');
     linked = linked.replaceAllMapped(headingPattern, (match) {
       final repoName = match.group(1)!;
       return '**[$repoName](${ref.reportLink})**${match.group(2)}${match.group(3)}${match.group(4)}';
     });
 
     final fullNamePattern = RegExp(
-      r'(^|[^\]\w./:-])(' +
-          RegExp.escape(ref.fullName) +
-          r')(?=$|[^\w./:-])',
+      r'(^|[^\]\w./:-])(' + RegExp.escape(ref.fullName) + r')(?=$|[^\w/:-])',
       multiLine: true,
     );
     linked = linked.replaceAllMapped(fullNamePattern, (match) {
       final prefix = match.group(1)!;
       final fullName = match.group(2)!;
       return '$prefix[$fullName](${ref.reportLink})';
+    });
+  }
+
+  for (final ref in uniqueNameRefs) {
+    final boldNameWithSuffixPattern = RegExp(
+      r'\*\*(' + RegExp.escape(ref.name) + r')([（(][^）)\n]+[）)])\*\*',
+    );
+    linked = linked.replaceAllMapped(boldNameWithSuffixPattern, (match) {
+      final name = match.group(1)!;
+      final suffix = match.group(2)!;
+      return '**[$name](${ref.reportLink})$suffix**';
+    });
+
+    final codeSpanPattern = RegExp('`(${RegExp.escape(ref.name)})`');
+    linked = linked.replaceAllMapped(codeSpanPattern, (match) {
+      final name = match.group(1)!;
+      return '[`$name`](${ref.reportLink})';
     });
   }
 
@@ -216,6 +231,24 @@ DailyReportRepositoryRef? repositoryRefFromData(Map<String, dynamic> data) {
     return null;
   }
   return DailyReportRepositoryRef(owner: owner, name: name);
+}
+
+Map<String, dynamic> dailyReportWithRepositoryData(
+  Map<String, dynamic> report,
+  Iterable<Map<String, dynamic>> repositories,
+) {
+  final existingRepositories = report['top_repositories'] as List<dynamic>?;
+  if (existingRepositories != null && existingRepositories.isNotEmpty) {
+    return report;
+  }
+
+  final repositoryList = repositories.toList();
+  if (repositoryList.isEmpty) return report;
+
+  return {
+    ...report,
+    'top_repositories': repositoryList,
+  };
 }
 
 class DailyReportView extends StatelessWidget {
@@ -649,8 +682,6 @@ class _TopRepoTile extends StatelessWidget {
                 ],
               ],
             ),
-              ),
-            ),
             if (description.isNotEmpty) ...[
               const SizedBox(height: 5),
               Text(
@@ -801,8 +832,12 @@ MarkdownStyleSheet _markdownStyle(BuildContext context) {
       color: cs.primary,
       backgroundColor: cs.surfaceContainerHighest,
     ),
-    a: TextStyle(color: cs.primary, fontWeight: FontWeight.w600),
-    aDecoration: TextDecoration.underline,
+    a: TextStyle(
+      color: cs.primary,
+      decoration: TextDecoration.underline,
+      decorationColor: cs.primary,
+      fontWeight: FontWeight.w600,
+    ),
   );
 }
 
@@ -824,4 +859,18 @@ String _formatCount(int count) {
 
 bool _isValidRepositoryPart(String value) {
   return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(value);
+}
+
+String _stripTrailingRepositoryPunctuation(String value) {
+  return value.replaceFirst(RegExp(r'[.,，。;；:：!?！？]+$'), '');
+}
+
+List<DailyReportRepositoryRef> _uniqueRepositoryNameRefs(
+  List<DailyReportRepositoryRef> refs,
+) {
+  final counts = <String, int>{};
+  for (final ref in refs) {
+    counts[ref.name] = (counts[ref.name] ?? 0) + 1;
+  }
+  return refs.where((ref) => counts[ref.name] == 1).toList();
 }

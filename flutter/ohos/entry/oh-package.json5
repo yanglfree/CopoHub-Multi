@@ -5,5 +5,7 @@
   "main": "",
   "author": "",
   "license": "",
-  "dependencies": {}
+  "dependencies": {
+    "webview_flutter_ohos": "file:../har/webview_flutter_ohos.har"
+  }
 }

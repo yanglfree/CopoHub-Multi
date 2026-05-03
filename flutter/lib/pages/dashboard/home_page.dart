@@ -18,28 +18,15 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
-  final _nestedKey = GlobalKey<NestedScrollViewState>();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(_onTabChanged);
-  }
-
-  void _onTabChanged() {
-    if (_tabController.indexIsChanging) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final innerCtrl = _nestedKey.currentState?.innerController;
-      if (innerCtrl != null && innerCtrl.hasClients) {
-        innerCtrl.jumpTo(0);
-      }
-    });
   }
 
   @override
   void dispose() {
-    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -52,38 +39,42 @@ class _HomePageState extends State<HomePage>
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
       body: NestedScrollView(
-        key: _nestedKey,
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar(
-            pinned: true,
-            forceElevated: innerBoxIsScrolled,
-            title: const Text(
-              '首页',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: GestureDetector(
-                  onTap: () => context.push('/repository/new'),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: cs.primary.withOpacity(0.12),
-                      shape: BoxShape.circle,
+          SliverOverlapAbsorber(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+            sliver: SliverAppBar(
+              pinned: true,
+              forceElevated: innerBoxIsScrolled,
+              title: const Text(
+                '首页',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: GestureDetector(
+                    onTap: () => context.push('/repository/new'),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        // Flutter-OH does not support Color.withValues yet.
+                        // ignore: deprecated_member_use
+                        color: cs.primary.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.add, color: cs.primary, size: 22),
                     ),
-                    child: Icon(Icons.add, color: cs.primary, size: 22),
                   ),
                 ),
-              ),
-            ],
-            bottom: TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(text: '我的仓库'),
-                Tab(text: 'Star 仓库'),
               ],
+              bottom: TabBar(
+                controller: _tabController,
+                tabs: const [
+                  Tab(text: '我的仓库'),
+                  Tab(text: 'Star 仓库'),
+                ],
+              ),
             ),
           ),
         ],
@@ -310,12 +301,15 @@ class _UserReposTabState extends State<_UserReposTab>
     return RefreshIndicator(
       onRefresh: () => _loadRepos(refresh: true),
       child: CustomScrollView(
+        key: const PageStorageKey<String>('home-user-repos'),
         slivers: [
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
           // ── Header row: 全部仓库 + 筛选 ──────────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
                 children: [
                   Text(
@@ -366,16 +360,14 @@ class _UserReposTabState extends State<_UserReposTab>
                     final lang = langs[i];
                     final selected = lang == _selectedLanguage;
                     return GestureDetector(
-                      onTap: () =>
-                          setState(() => _selectedLanguage = lang),
+                      onTap: () => setState(() => _selectedLanguage = lang),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 6),
                         decoration: BoxDecoration(
                           color: selected ? cs.primary : Colors.transparent,
                           border: Border.all(
-                            color:
-                                selected ? cs.primary : cs.outlineVariant,
+                            color: selected ? cs.primary : cs.outlineVariant,
                           ),
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -384,9 +376,8 @@ class _UserReposTabState extends State<_UserReposTab>
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: selected
-                                ? Colors.white
-                                : cs.onSurfaceVariant,
+                            color:
+                                selected ? Colors.white : cs.onSurfaceVariant,
                           ),
                         ),
                       ),
@@ -408,8 +399,7 @@ class _UserReposTabState extends State<_UserReposTab>
                   children: [
                     _MyRepoTile(repo: filtered[i]),
                     if (i < filtered.length - 1)
-                      const Divider(
-                          height: 1, indent: 16, endIndent: 16),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
                   ],
                 );
               },
@@ -501,18 +491,32 @@ class _StarredReposTabState extends State<_StarredReposTab>
     }
     return RefreshIndicator(
       onRefresh: () => _loadRepos(refresh: true),
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: _repos.length + (_hasMore ? 1 : 0),
-        separatorBuilder: (_, __) =>
-            const Divider(height: 1, indent: 16, endIndent: 16),
-        itemBuilder: (context, i) {
-          if (i >= _repos.length) {
-            _loadRepos();
-            return const _LoadMoreIndicator();
-          }
-          return _StarredRepoTile(repo: _repos[i]);
-        },
+      child: CustomScrollView(
+        key: const PageStorageKey<String>('home-starred-repos'),
+        slivers: [
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                if (i >= _repos.length) {
+                  if (_hasMore) _loadRepos();
+                  return _hasMore ? const _LoadMoreIndicator() : null;
+                }
+                return Column(
+                  children: [
+                    _StarredRepoTile(repo: _repos[i]),
+                    if (i < _repos.length - 1)
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                  ],
+                );
+              },
+              childCount: _repos.length + (_hasMore ? 1 : 0),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -561,8 +565,7 @@ class _MyRepoTile extends StatelessWidget {
                 repo.description,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style:
-                    TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
             ],
             const SizedBox(height: 8),
@@ -582,16 +585,15 @@ class _MyRepoTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(repo.language,
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ],
                 const Spacer(),
                 Text(
                   _timeAgo(repo.pushedAt.isNotEmpty
                       ? repo.pushedAt
                       : repo.updatedAt),
-                  style:
-                      TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ],
             ),
@@ -632,8 +634,7 @@ class _StarredRepoTile extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 repo.owner!.login,
-                style:
-                    TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
             ],
             if (repo.description.isNotEmpty) ...[
@@ -642,8 +643,7 @@ class _StarredRepoTile extends StatelessWidget {
                 repo.description,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style:
-                    TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
               ),
             ],
             const SizedBox(height: 8),
@@ -663,26 +663,24 @@ class _StarredRepoTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(repo.language,
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                   const SizedBox(width: 12),
                 ],
                 if (repo.stargazersCount > 0) ...[
-                  Icon(Icons.star_border,
-                      size: 13, color: cs.onSurfaceVariant),
+                  Icon(Icons.star_border, size: 13, color: cs.onSurfaceVariant),
                   const SizedBox(width: 2),
                   Text(_fmt(repo.stargazersCount),
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                   const SizedBox(width: 10),
                 ],
                 if (repo.forksCount > 0) ...[
-                  Icon(Icons.fork_right,
-                      size: 13, color: cs.onSurfaceVariant),
+                  Icon(Icons.fork_right, size: 13, color: cs.onSurfaceVariant),
                   const SizedBox(width: 2),
                   Text(_fmt(repo.forksCount),
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                   const SizedBox(width: 10),
                 ],
                 const Spacer(),
@@ -690,8 +688,7 @@ class _StarredRepoTile extends StatelessWidget {
                   _timeAgo(repo.pushedAt.isNotEmpty
                       ? repo.pushedAt
                       : repo.updatedAt),
-                  style:
-                      TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
               ],
             ),

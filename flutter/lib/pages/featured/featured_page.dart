@@ -93,12 +93,28 @@ class _FeaturedPageState extends State<FeaturedPage> {
       _reportLoading = true;
       _reportError = '';
     });
-    final result = await _dailyApi.getLatestReport();
+    final result = await _dailyApi.getDailyReport(_selectedDate);
+    final trendingResult = result.isSuccess
+        ? await _dailyApi.getTrending(_selectedDate, limit: 50)
+        : null;
     if (!mounted) return;
     setState(() {
       _reportLoading = false;
       if (result.isSuccess) {
-        _report = result.data;
+        _report = dailyReportWithRepositoryData(
+          result.data!,
+          trendingResult?.data?.items
+                  .map((item) => {
+                        'owner': item.owner,
+                        'name': item.name,
+                        'description': item.description,
+                        'stars': item.stars,
+                        'language': item.language,
+                        'url': item.url,
+                      })
+                  .toList() ??
+              const <Map<String, dynamic>>[],
+        );
       } else {
         _reportError = result.message ?? '加载失败';
       }

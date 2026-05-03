@@ -87,12 +87,28 @@ class _DailyPageState extends State<DailyPage> {
       _reportError = '';
     });
 
-    final result = await _api.getLatestReport();
+    final result = await _api.getDailyReport(_selectedDate);
+    final trendingResult = result.isSuccess
+        ? await _api.getTrending(_selectedDate, limit: 50)
+        : null;
     if (!mounted) return;
 
     if (result.isSuccess) {
       setState(() {
-        _report = result.data;
+        _report = dailyReportWithRepositoryData(
+          result.data!,
+          trendingResult?.data?.items
+                  .map((item) => {
+                        'owner': item.owner,
+                        'name': item.name,
+                        'description': item.description,
+                        'stars': item.stars,
+                        'language': item.language,
+                        'url': item.url,
+                      })
+                  .toList() ??
+              const <Map<String, dynamic>>[],
+        );
         _reportLoading = false;
       });
     } else {
