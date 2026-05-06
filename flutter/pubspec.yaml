@@ -28,6 +28,9 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
 
+  # QR Code
+  qr_flutter: ^4.1.0
+
   # Markdown & Code Highlight
   flutter_markdown: ^0.7.6+1
   highlight: ^0.7.0

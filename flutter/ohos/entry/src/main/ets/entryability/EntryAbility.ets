@@ -18,6 +18,7 @@ import { CopoHubClipboardPlugin } from '../plugins/CopoHubClipboardPlugin';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 import { PathProviderPlugin } from '../plugins/PathProviderPlugin';
 import { SharedPreferencesPlugin } from '../plugins/SharedPreferencesPlugin';
+import { SharePlugin } from '../plugins/SharePlugin';
 
 export default class EntryAbility extends FlutterAbility {
   configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -26,5 +27,6 @@ export default class EntryAbility extends FlutterAbility {
     flutterEngine.getPlugins()?.add(new SharedPreferencesPlugin())
     flutterEngine.getPlugins()?.add(new PathProviderPlugin())
     flutterEngine.getPlugins()?.add(new CopoHubClipboardPlugin())
+    flutterEngine.getPlugins()?.add(new SharePlugin(this.context))
   }
 }

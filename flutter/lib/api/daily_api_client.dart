@@ -196,6 +196,9 @@ class DailyApiClient {
       );
       return ApiResponse.ok(normalizeReportPayload(response.data));
     } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return const ApiResponse(success: false, error: 'not_found');
+      }
       return ApiResponse.fail(e.message ?? '网络请求失败');
     }
   }

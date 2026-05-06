@@ -14,6 +14,7 @@
 - Prefer APIs that compile on both toolchains unless the project explicitly raises the minimum Flutter-OH version.
 - Known compatibility case: `Color.withValues(alpha: ...)` is available in newer upstream Flutter but is not available in the current Flutter-OH toolchain. Use `Color.withOpacity(...)` for shared code that must compile on HarmonyOS.
 - When changing shared Dart code, validate with both `flutter analyze` and the HarmonyOS build command when the change touches framework APIs, rendering, plugins, platform channels, or build configuration.
+- After each code change, run both upstream Flutter validation for iOS/Android and Flutter-OH/HarmonyOS validation before reporting completion. At minimum, shared Flutter changes require `flutter analyze`; HarmonyOS-related changes, plugin changes, platform channel changes, rendering changes, dependency changes, or any change suspected to affect Flutter-OH must also pass `hvigorw assembleHap`.
 
 ## Basic Settings
 

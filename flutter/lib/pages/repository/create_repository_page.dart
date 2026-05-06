@@ -110,7 +110,7 @@ class _CreateRepositoryPageState extends State<CreateRepositoryPage> {
           padding: const EdgeInsets.all(16),
           children: [
             // Repo name
-            _SectionLabel('仓库名称 *'),
+            const _SectionLabel('仓库名称 *'),
             TextFormField(
               controller: _nameCtrl,
               decoration: const InputDecoration(
@@ -129,7 +129,7 @@ class _CreateRepositoryPageState extends State<CreateRepositoryPage> {
             const SizedBox(height: 16),
 
             // Description
-            _SectionLabel('描述（可选）'),
+            const _SectionLabel('描述（可选）'),
             TextFormField(
               controller: _descCtrl,
               decoration: const InputDecoration(
@@ -141,7 +141,7 @@ class _CreateRepositoryPageState extends State<CreateRepositoryPage> {
             const SizedBox(height: 16),
 
             // Visibility
-            _SectionLabel('可见性'),
+            const _SectionLabel('可见性'),
             _VisibilitySelector(
               isPrivate: _isPrivate,
               onChanged: (v) => setState(() => _isPrivate = v),
@@ -149,7 +149,7 @@ class _CreateRepositoryPageState extends State<CreateRepositoryPage> {
             const SizedBox(height: 16),
 
             // Init options
-            _SectionLabel('初始化选项'),
+            const _SectionLabel('初始化选项'),
             _SwitchTile(
               title: '添加 README 文件',
               subtitle: '建议添加，方便描述项目',
@@ -169,7 +169,7 @@ class _CreateRepositoryPageState extends State<CreateRepositoryPage> {
             const SizedBox(height: 16),
 
             // .gitignore template
-            _SectionLabel('.gitignore 模板'),
+            const _SectionLabel('.gitignore 模板'),
             _DropdownTile<String>(
               label: '.gitignore',
               value: _selectedGitignore,
@@ -180,7 +180,7 @@ class _CreateRepositoryPageState extends State<CreateRepositoryPage> {
             const SizedBox(height: 16),
 
             // License
-            _SectionLabel('开源协议'),
+            const _SectionLabel('开源协议'),
             _DropdownTile<_License>(
               label: '协议',
               value: _licenseOptions.firstWhere(
