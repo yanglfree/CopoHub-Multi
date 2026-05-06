@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../api/api_cache.dart';
 import '../../api/copohub_api_client.dart';
 import '../../api/daily_api_client.dart';
 import '../../components/daily/daily_report_share_card.dart';
 import '../../components/daily/daily_report_view.dart';
 import '../../models/copohub_curated_item.dart';
+import '../../models/deduplicated_repo_item.dart';
 import '../../models/trending_item.dart';
 import '../../utils/constants.dart';
 
@@ -26,7 +28,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
   // ── GitHub精选 state ──────────────────────────────────────────────────────
   final _dailyApi = DailyApiClient.instance;
   String _selectedDate = _todayStr();
-  int _segment = 0; // 0: 热门项目, 1: 每日报告
+  int _segment = 0; // 0: 热门项目, 1: 每日报告, 2: 高频项目
 
   List<TrendingItem> _trending = [];
   bool _trendingLoading = false;
@@ -39,6 +41,12 @@ class _FeaturedPageState extends State<FeaturedPage> {
   bool _reportLoading = false;
   String _reportError = '';
   bool _reportNotFound = false;
+
+  List<DeduplicatedRepoItem> _deduped = [];
+  bool _dedupedLoading = false;
+  String _dedupedError = '';
+  String _dedupedSort = 'total'; // 'total' | 'recent'
+  String _dedupedLanguage = '';
 
   // ── CopoHub精选 state ─────────────────────────────────────────────────────
   final _copoApi = CopoHubApiClient.instance;
@@ -60,6 +68,30 @@ class _FeaturedPageState extends State<FeaturedPage> {
     super.initState();
     _loadTrending();
     _loadLanguages();
+  }
+
+  Future<void> _loadDeduped({bool force = false}) async {
+    if (_dedupedLoading) return;
+    if (force) {
+      await ApiCache.instance.invalidateMatching('/api/v1/trending/deduplicated');
+    }
+    setState(() {
+      _dedupedLoading = true;
+      _dedupedError = '';
+    });
+    final result = await _dailyApi.getDeduplicated(
+      sort: _dedupedSort,
+      language: _dedupedLanguage,
+    );
+    if (!mounted) return;
+    setState(() {
+      _dedupedLoading = false;
+      if (result.isSuccess) {
+        _deduped = result.data ?? [];
+      } else {
+        _dedupedError = result.message ?? '加载失败';
+      }
+    });
   }
 
   // ── Data loading ─────────────────────────────────────────────────────────
@@ -226,6 +258,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
     setState(() => _segment = index);
     if (index == 0 && _trending.isEmpty) _loadTrending();
     if (index == 1 && _report == null) _loadReport();
+    if (index == 2 && _deduped.isEmpty) _loadDeduped();
   }
 
   void _switchTopTab(int index) {
@@ -240,8 +273,10 @@ class _FeaturedPageState extends State<FeaturedPage> {
     if (_topTab == 0) {
       if (_segment == 0) {
         _loadTrending(force: true);
-      } else {
+      } else if (_segment == 1) {
         _loadReport(force: true);
+      } else {
+        _loadDeduped(force: true);
       }
     } else {
       _loadCurated(force: true);
@@ -299,6 +334,11 @@ class _FeaturedPageState extends State<FeaturedPage> {
                       reportLoading: _reportLoading,
                       reportError: _reportError,
                       reportNotFound: _reportNotFound,
+                      deduped: _deduped,
+                      dedupedLoading: _dedupedLoading,
+                      dedupedError: _dedupedError,
+                      dedupedSort: _dedupedSort,
+                      dedupedLanguage: _dedupedLanguage,
                       onPrevDate: () => _changeDate(-1),
                       onNextDate: () => _changeDate(1),
                       onPickDate: _pickDate,
@@ -319,6 +359,21 @@ class _FeaturedPageState extends State<FeaturedPage> {
                       },
                       onRetryTrending: () => _loadTrending(force: true),
                       onRetryReport: () => _loadReport(force: true),
+                      onDedupedSortChanged: (s) {
+                        setState(() {
+                          _dedupedSort = s;
+                          _deduped = [];
+                        });
+                        _loadDeduped();
+                      },
+                      onDedupedLanguageChanged: (l) {
+                        setState(() {
+                          _dedupedLanguage = l;
+                          _deduped = [];
+                        });
+                        _loadDeduped();
+                      },
+                      onRetryDeduped: () => _loadDeduped(force: true),
                     )
                   : _CopoHubTab(
                       items: _curated,
@@ -436,6 +491,11 @@ class _GitHubTab extends StatelessWidget {
     required this.reportLoading,
     required this.reportError,
     required this.reportNotFound,
+    required this.deduped,
+    required this.dedupedLoading,
+    required this.dedupedError,
+    required this.dedupedSort,
+    required this.dedupedLanguage,
     required this.onPrevDate,
     required this.onNextDate,
     required this.onPickDate,
@@ -444,6 +504,9 @@ class _GitHubTab extends StatelessWidget {
     required this.onSinceChanged,
     required this.onRetryTrending,
     required this.onRetryReport,
+    required this.onDedupedSortChanged,
+    required this.onDedupedLanguageChanged,
+    required this.onRetryDeduped,
   });
 
   final String date;
@@ -458,6 +521,11 @@ class _GitHubTab extends StatelessWidget {
   final bool reportLoading;
   final String reportError;
   final bool reportNotFound;
+  final List<DeduplicatedRepoItem> deduped;
+  final bool dedupedLoading;
+  final String dedupedError;
+  final String dedupedSort;
+  final String dedupedLanguage;
   final VoidCallback onPrevDate;
   final VoidCallback onNextDate;
   final VoidCallback onPickDate;
@@ -466,18 +534,22 @@ class _GitHubTab extends StatelessWidget {
   final void Function(String) onSinceChanged;
   final VoidCallback onRetryTrending;
   final VoidCallback onRetryReport;
+  final void Function(String) onDedupedSortChanged;
+  final void Function(String) onDedupedLanguageChanged;
+  final VoidCallback onRetryDeduped;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _DatePickerHeader(
-          date: date,
-          since: since,
-          onPrev: onPrevDate,
-          onNext: onNextDate,
-          onTap: onPickDate,
-        ),
+        if (segment != 2)
+          _DatePickerHeader(
+            date: date,
+            since: since,
+            onPrev: onPrevDate,
+            onNext: onNextDate,
+            onTap: onPickDate,
+          ),
         _SegmentControl(
           selected: segment,
           onSelect: onSegmentChanged,
@@ -502,6 +574,24 @@ class _GitHubTab extends StatelessWidget {
                   notFound: reportNotFound,
                   onRetry: onRetryReport,
                 ),
+              : segment == 1
+                  ? _ReportView(
+                      report: report,
+                      loading: reportLoading,
+                      error: reportError,
+                      onRetry: onRetryReport,
+                    )
+                  : _FrequentView(
+                      items: deduped,
+                      loading: dedupedLoading,
+                      error: dedupedError,
+                      sort: dedupedSort,
+                      language: dedupedLanguage,
+                      languages: languages,
+                      onSortChanged: onDedupedSortChanged,
+                      onLanguageChanged: onDedupedLanguageChanged,
+                      onRetry: onRetryDeduped,
+                    ),
         ),
       ],
     );
@@ -652,13 +742,22 @@ class _SegmentControl extends StatelessWidget {
               onTap: () => onSelect(0),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: _SegBtn(
               label: '每日报告',
               icon: Icons.bar_chart_outlined,
               active: selected == 1,
               onTap: () => onSelect(1),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _SegBtn(
+              label: '高频项目',
+              icon: Icons.repeat_outlined,
+              active: selected == 2,
+              onTap: () => onSelect(2),
             ),
           ),
         ],
@@ -1051,6 +1150,235 @@ class _LangDot extends StatelessWidget {
           Text(language, style: Theme.of(context).textTheme.bodySmall),
         ],
       );
+}
+
+// ── 高频项目 view ─────────────────────────────────────────────────────────────
+
+class _FrequentView extends StatelessWidget {
+  const _FrequentView({
+    required this.items,
+    required this.loading,
+    required this.error,
+    required this.sort,
+    required this.language,
+    required this.languages,
+    required this.onSortChanged,
+    required this.onLanguageChanged,
+    required this.onRetry,
+  });
+
+  final List<DeduplicatedRepoItem> items;
+  final bool loading;
+  final String error;
+  final String sort;
+  final String language;
+  final List<String> languages;
+  final void Function(String) onSortChanged;
+  final void Function(String) onLanguageChanged;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Filter bar
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: _LanguageMenu(
+                  selectedLanguage: language,
+                  languages: languages,
+                  onChanged: onLanguageChanged,
+                ),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('累计', style: TextStyle(fontSize: 12)),
+                selected: sort == 'total',
+                onSelected: (_) => onSortChanged('total'),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 4),
+              ChoiceChip(
+                label: const Text('最近', style: TextStyle(fontSize: 12)),
+                selected: sort == 'recent',
+                onSelected: (_) => onSortChanged('recent'),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: loading && items.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : error.isNotEmpty && items.isEmpty
+                  ? _ErrorRetry(message: error, onRetry: onRetry)
+                  : items.isEmpty
+                      ? const _Empty(message: '暂无高频项目数据')
+                      : RefreshIndicator(
+                          onRefresh: () async => onRetry(),
+                          child: ListView.separated(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: items.length,
+                            separatorBuilder: (_, __) => const Divider(
+                                height: 1, indent: 16, endIndent: 16),
+                            itemBuilder: (context, i) =>
+                                _FrequentCard(item: items[i], rank: i + 1),
+                          ),
+                        ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FrequentCard extends StatelessWidget {
+  const _FrequentCard({required this.item, required this.rank});
+  final DeduplicatedRepoItem item;
+  final int rank;
+
+  static String _fmt(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+
+  String _lastSeenLabel() {
+    final now = DateTime.now();
+    final diff = now.difference(item.lastSeenDate);
+    if (diff.inDays == 0) return '今天';
+    if (diff.inDays == 1) return '昨天';
+    if (diff.inDays < 7) return '${diff.inDays}天前';
+    final d = item.lastSeenDate;
+    return '${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () => context.push('/repository/${item.owner}/${item.name}'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Rank badge
+            Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: rank <= 3
+                    ? (rank == 1
+                        ? const Color(0xFFFFD700)
+                        : rank == 2
+                            ? const Color(0xFFC0C0C0)
+                            : const Color(0xFFCD7F32))
+                    : cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '$rank',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: rank <= 3 ? Colors.white : cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.fullName,
+                          style: TextStyle(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // 累计次数 badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.repeat,
+                                size: 11, color: cs.onPrimaryContainer),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${item.totalOccurrences}次',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onPrimaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (item.description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      item.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      if (item.language.isNotEmpty) ...[
+                        _LangDot(language: item.language),
+                        const SizedBox(width: 10),
+                      ],
+                      const Icon(Icons.star_border, size: 13),
+                      const SizedBox(width: 2),
+                      Text(_fmt(item.stars),
+                          style: Theme.of(context).textTheme.bodySmall),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.fork_right, size: 13),
+                      const SizedBox(width: 2),
+                      Text(_fmt(item.forks),
+                          style: Theme.of(context).textTheme.bodySmall),
+                      const Spacer(),
+                      Icon(Icons.schedule,
+                          size: 11, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 3),
+                      Text(
+                        _lastSeenLabel(),
+                        style: TextStyle(
+                            fontSize: 11, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Daily report view ─────────────────────────────────────────────────────────

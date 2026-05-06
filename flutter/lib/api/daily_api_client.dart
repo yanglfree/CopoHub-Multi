@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../models/trending_item.dart';
+import '../models/deduplicated_repo_item.dart';
 import '../models/repo_analysis.dart';
 import '../utils/constants.dart';
 import 'api_cache.dart';
@@ -44,6 +45,7 @@ class DailyApiClient {
   static const _reportTtl = Duration(minutes: 30);
   static const _languagesTtl = Duration(hours: 6);
   static const _datesTtl = Duration(hours: 1);
+  static const _deduplicatedTtl = Duration(minutes: 30);
 
   /// Drop daily-domain cache entries. If [date] is provided, only entries
   /// that mention it are removed; otherwise every daily entry is dropped.
@@ -111,6 +113,53 @@ class DailyApiClient {
       limit: currentLimit,
       hasMore: currentPage * currentLimit < total,
     );
+  }
+
+  // ── Deduplicated (高频) repositories ─────────────────────────────────────────
+
+  Future<ApiResponse<List<DeduplicatedRepoItem>>> getDeduplicated({
+    String sort = 'total',
+    String language = '',
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final params = <String, dynamic>{
+      'sort': sort,
+      'page': page,
+      'limit': limit,
+    };
+    if (language.isNotEmpty) params['language'] = language;
+
+    final cacheKey =
+        ApiCache.keyFor('GET', '/api/v1/trending/deduplicated', params);
+    final cached = ApiCache.instance.get(cacheKey);
+    if (cached != null && cached.isFreshFor(_deduplicatedTtl)) {
+      return ApiResponse.ok(_parseDeduplicated(cached.body));
+    }
+
+    try {
+      final response = await _dio.get<dynamic>(
+        '/api/v1/trending/deduplicated',
+        queryParameters: params,
+      );
+      await ApiCache.instance.put(
+        cacheKey,
+        CachedEntry(
+            etag: null, body: response.data, fetchedAt: DateTime.now()),
+      );
+      return ApiResponse.ok(_parseDeduplicated(response.data));
+    } on DioException catch (e) {
+      return ApiResponse.fail(e.message ?? '网络请求失败');
+    }
+  }
+
+  List<DeduplicatedRepoItem> _parseDeduplicated(dynamic body) {
+    final map = body as Map<String, dynamic>;
+    final dataArray = map['data'] as List<dynamic>? ?? [];
+    return dataArray
+        .map((e) =>
+            DeduplicatedRepoItem.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   // ── Available dates ───────────────────────────────────────────────────────────
