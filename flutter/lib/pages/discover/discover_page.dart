@@ -4,8 +4,9 @@ import '../../api/github_api_client.dart';
 import '../../models/repository.dart';
 import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../utils/constants.dart';
+import '../../l10n/app_localizations.dart';
 
-/// "发现" tab — Popular / Trending / Latest repos from GitHub search.
+/// "Discover" tab — Popular / Latest repos from GitHub search.
 /// Mirrors HarmonyOS DiscoverView.
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -22,7 +23,7 @@ class _DiscoverPageState extends State<DiscoverPage>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: 2, vsync: this);
     _tab.addListener(_onTabChanged);
   }
 
@@ -45,6 +46,8 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return Scaffold(
       body: NestedScrollView(
         key: _nestedKey,
@@ -52,20 +55,20 @@ class _DiscoverPageState extends State<DiscoverPage>
           SliverAppBar(
             pinned: true,
             forceElevated: innerBoxIsScrolled,
-            title: const Text('发现', style: TextStyle(fontWeight: FontWeight.w700)),
+            title: Text(l10n.discoverTitle,
+                style: const TextStyle(fontWeight: FontWeight.w700)),
             actions: [
               IconButton(
                 icon: const Icon(Icons.search),
-                tooltip: '搜索',
+                tooltip: l10n.search,
                 onPressed: () => context.push('/search'),
               ),
             ],
             bottom: TabBar(
               controller: _tab,
-              tabs: const [
-                Tab(text: '热门'),
-                Tab(text: '趋势'),
-                Tab(text: '最新'),
+              tabs: [
+                Tab(text: l10n.popular),
+                Tab(text: l10n.latest),
               ],
             ),
           ),
@@ -73,9 +76,8 @@ class _DiscoverPageState extends State<DiscoverPage>
         body: TabBarView(
           controller: _tab,
           children: const [
-            _RepoSearchTab(query: 'stars:>1000', sort: 'stars', label: '热门'),
-            _RepoSearchTab(query: 'stars:>100 pushed:>2024-01-01', sort: 'stars', label: '趋势'),
-            _RepoSearchTab(query: 'stars:>10', sort: 'updated', label: '最新'),
+            _RepoSearchTab(query: 'stars:>1000', sort: 'stars', label: 'Popular'),
+            _RepoSearchTab(query: 'stars:>10', sort: 'updated', label: 'Latest'),
           ],
         ),
       ),
@@ -155,7 +157,7 @@ class _RepoSearchTabState extends State<_RepoSearchTab>
     } else {
       setState(() {
         _loading = false;
-        _error = result.message ?? '加载失败';
+        _error = result.message ?? AppLocalizations.of(context).loadFailed;
       });
     }
   }
@@ -295,7 +297,10 @@ class _ErrorView extends StatelessWidget {
               const SizedBox(height: 16),
               Text(message, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+              OutlinedButton(
+                onPressed: onRetry,
+                child: Text(AppLocalizations.of(context).retry),
+              ),
             ],
           ),
         ),

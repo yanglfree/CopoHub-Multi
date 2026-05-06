@@ -106,7 +106,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!isLoggedIn && !isOnLogin && !isOnSplash) {
         return AppRoutes.login;
       }
-      if (isLoggedIn && (isOnLogin || isOnSplash)) {
+      if (isLoggedIn && isOnLogin) {
         return AppRoutes.home;
       }
       // Bare /dashboard → redirect to first tab

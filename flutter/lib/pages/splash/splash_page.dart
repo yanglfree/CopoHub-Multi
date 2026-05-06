@@ -127,7 +127,7 @@ class _SplashPageState extends State<SplashPage>
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'GitHub Client for HarmonyOS',
+                          'Github Client for Mobile',
                           style:
                               Theme.of(context).textTheme.titleMedium?.copyWith(
                                     color: cs.outline,

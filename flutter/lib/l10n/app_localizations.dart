@@ -15,6 +15,13 @@ class AppLocalizations {
 
   bool get _zh => locale.languageCode == 'zh';
 
+  // ── Discover page ──────────────────────────────────────────────────────────
+  String get discoverTitle => _zh ? '发现' : 'Discover';
+  String get search => _zh ? '搜索' : 'Search';
+  String get popular => _zh ? '热门' : 'Popular';
+  String get trending => _zh ? '趋势' : 'Trending';
+  String get latest => _zh ? '最新' : 'Latest';
+
   // ── Repository page tabs ──────────────────────────────────────────────────
   String get tabReadme => 'README';
   String get tabCode => _zh ? '代码' : 'Code';

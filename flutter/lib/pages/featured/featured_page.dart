@@ -228,12 +228,36 @@ class _FeaturedPageState extends State<FeaturedPage> {
   Future<void> _pickDate() async {
     final today = DateTime.now();
     final current = DateTime.tryParse(_selectedDate) ?? today;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: current.isAfter(today) ? today : current,
-      firstDate: DateTime(2020),
-      lastDate: today,
-    );
+    final DateTime? picked;
+    switch (_since) {
+      case 'weekly':
+        picked = await showDialog<DateTime>(
+          context: context,
+          builder: (ctx) => _WeekPickerDialog(
+            initialDate: current,
+            firstDate: DateTime(2020),
+            lastDate: today,
+          ),
+        );
+      case 'monthly':
+        picked = await showDialog<DateTime>(
+          context: context,
+          builder: (ctx) => _MonthPickerDialog(
+            initialDate: current,
+            firstDate: DateTime(2020),
+            lastDate: today,
+          ),
+        );
+      default:
+        picked = await showDialog<DateTime>(
+          context: context,
+          builder: (ctx) => _DayPickerDialog(
+            initialDate: current.isAfter(today) ? today : current,
+            firstDate: DateTime(2020),
+            lastDate: today,
+          ),
+        );
+    }
     if (picked == null || !mounted) return;
     _setDate(picked);
   }
@@ -567,18 +591,12 @@ class _GitHubTab extends StatelessWidget {
                   onSinceChanged: onSinceChanged,
                   onRetry: onRetryTrending,
                 )
-              : _ReportView(
-                  report: report,
-                  loading: reportLoading,
-                  error: reportError,
-                  notFound: reportNotFound,
-                  onRetry: onRetryReport,
-                ),
               : segment == 1
                   ? _ReportView(
                       report: report,
                       loading: reportLoading,
                       error: reportError,
+                      notFound: reportNotFound,
                       onRetry: onRetryReport,
                     )
                   : _FrequentView(
@@ -638,31 +656,26 @@ class _DatePickerHeader extends StatelessWidget {
   }
 
   String _displayDate() {
-    if (_isCurrentPeriod()) {
-      switch (since) {
-        case 'weekly':
-          return formatDailyReportDateLabel(date, todayLabel: '本周');
-        case 'monthly':
-          return formatDailyReportDateLabel(date, todayLabel: '本月');
-        case 'daily':
-        default:
-          return formatDailyReportDateLabel(date);
-      }
-    }
     try {
       final dt = DateTime.parse(date);
       if (since == 'weekly') {
         final monday = dt.subtract(Duration(days: dt.weekday - 1));
         final sunday = monday.add(const Duration(days: 6));
+        final String rangeStr;
         if (monday.month == sunday.month) {
-          return '${monday.month}月${monday.day}日-${sunday.day}日';
+          rangeStr = '${monday.month}月${monday.day}日-${sunday.day}日';
+        } else {
+          rangeStr =
+              '${monday.month}月${monday.day}日-${sunday.month}月${sunday.day}日';
         }
-        return '${monday.month}月${monday.day}日-${sunday.month}月${sunday.day}日';
+        return _isCurrentPeriod() ? '本周 ($rangeStr)' : rangeStr;
       }
       if (since == 'monthly') {
-        return '${dt.year}年${dt.month.toString().padLeft(2, '0')}月';
+        final monthStr =
+            '${dt.year}年${dt.month.toString().padLeft(2, '0')}月';
+        return _isCurrentPeriod() ? '本月 ($monthStr)' : monthStr;
       }
-      return '${dt.year}年${dt.month.toString().padLeft(2, '0')}月${dt.day.toString().padLeft(2, '0')}日';
+      return formatDailyReportDateLabel(date);
     } catch (_) {
       return date;
     }
@@ -1736,4 +1749,734 @@ class _Empty extends StatelessWidget {
               TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       );
+}
+
+// ── Day Picker Dialog ─────────────────────────────────────────────────────────
+
+class _DayPickerDialog extends StatefulWidget {
+  const _DayPickerDialog({
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+  });
+  final DateTime initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  @override
+  State<_DayPickerDialog> createState() => _DayPickerDialogState();
+}
+
+class _DayPickerDialogState extends State<_DayPickerDialog> {
+  late DateTime _viewMonth;
+  late DateTime _selected;
+
+  static const _dayHeaders = ['一', '二', '三', '四', '五', '六', '日'];
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initialDate;
+    _viewMonth = DateTime(widget.initialDate.year, widget.initialDate.month);
+  }
+
+  bool _canPrevMonth() {
+    final prev = DateTime(_viewMonth.year, _viewMonth.month - 1);
+    return !prev.isBefore(
+        DateTime(widget.firstDate.year, widget.firstDate.month));
+  }
+
+  bool _canNextMonth() {
+    final next = DateTime(_viewMonth.year, _viewMonth.month + 1);
+    return !next
+        .isAfter(DateTime(widget.lastDate.year, widget.lastDate.month));
+  }
+
+  List<DateTime?> _buildDays() {
+    final firstDay = DateTime(_viewMonth.year, _viewMonth.month, 1);
+    final lastDay = DateTime(_viewMonth.year, _viewMonth.month + 1, 0);
+    final startPad = firstDay.weekday - 1;
+    final days = <DateTime?>[
+      ...List<DateTime?>.filled(startPad, null),
+      for (int d = 1; d <= lastDay.day; d++)
+        DateTime(_viewMonth.year, _viewMonth.month, d),
+    ];
+    while (days.length % 7 != 0) {
+      days.add(null);
+    }
+    return days;
+  }
+
+  bool _isEnabled(DateTime? day) {
+    if (day == null) return false;
+    return !day.isBefore(DateTime(widget.firstDate.year,
+            widget.firstDate.month, widget.firstDate.day)) &&
+        !day.isAfter(DateTime(widget.lastDate.year, widget.lastDate.month,
+            widget.lastDate.day));
+  }
+
+  bool _isSelected(DateTime? day) =>
+      day != null &&
+      day.year == _selected.year &&
+      day.month == _selected.month &&
+      day.day == _selected.day;
+
+  bool _isToday(DateTime? day) {
+    if (day == null) return false;
+    final now = DateTime.now();
+    return day.year == now.year && day.month == now.month && day.day == now.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final days = _buildDays();
+    final numWeeks = days.length ~/ 7;
+
+    return Dialog(
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: cs.surfaceContainerLowest,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '选择日期',
+                style: tt.titleSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w500),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _PickerNavButton(
+                  icon: Icons.chevron_left_rounded,
+                  enabled: _canPrevMonth(),
+                  onTap: () => setState(() => _viewMonth =
+                      DateTime(_viewMonth.year, _viewMonth.month - 1)),
+                  cs: cs,
+                ),
+                Text(
+                  '${_viewMonth.year}年${_viewMonth.month}月',
+                  style: tt.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                _PickerNavButton(
+                  icon: Icons.chevron_right_rounded,
+                  enabled: _canNextMonth(),
+                  onTap: () => setState(() => _viewMonth =
+                      DateTime(_viewMonth.year, _viewMonth.month + 1)),
+                  cs: cs,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Day-of-week headers
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Row(
+                children: List.generate(_dayHeaders.length, (i) {
+                  final isWeekend = i >= 5;
+                  return Expanded(
+                    child: Center(
+                      child: Text(
+                        _dayHeaders[i],
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isWeekend
+                              ? cs.error.withAlpha(160)
+                              : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Day grid rows
+            for (int w = 0; w < numWeeks; w++)
+              _buildDayRow(days.sublist(w * 7, (w + 1) * 7), cs),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayRow(List<DateTime?> row, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+      child: Row(
+        children: List.generate(row.length, (i) {
+          final day = row[i];
+          final enabled = _isEnabled(day);
+          final selected = _isSelected(day);
+          final today = _isToday(day);
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: enabled
+                  ? () {
+                      Navigator.of(context).pop(day);
+                    }
+                  : null,
+              child: SizedBox(
+                height: 38,
+                child: Center(
+                  child: day == null
+                      ? const SizedBox.shrink()
+                      : Container(
+                          width: 34,
+                          height: 34,
+                          decoration: selected
+                              ? BoxDecoration(
+                                  color: cs.primary,
+                                  shape: BoxShape.circle,
+                                )
+                              : today
+                                  ? BoxDecoration(
+                                      border: Border.all(
+                                          color: cs.primary, width: 1.5),
+                                      shape: BoxShape.circle,
+                                    )
+                                  : null,
+                          child: Center(
+                            child: Text(
+                              '${day.day}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: !enabled
+                                    ? cs.onSurface.withAlpha(48)
+                                    : selected
+                                        ? cs.onPrimary
+                                        : today
+                                            ? cs.primary
+                                            : null,
+                                fontWeight: selected || today
+                                    ? FontWeight.w700
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ── Month Picker Dialog ───────────────────────────────────────────────────────
+
+class _MonthPickerDialog extends StatefulWidget {
+  const _MonthPickerDialog({
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+  });
+  final DateTime initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  @override
+  State<_MonthPickerDialog> createState() => _MonthPickerDialogState();
+}
+
+class _MonthPickerDialogState extends State<_MonthPickerDialog> {
+  late int _year;
+  late int _selectedYear;
+  late int _selectedMonth;
+
+  static const _monthLabels = [
+    '1月', '2月', '3月', '4月', '5月', '6月',
+    '7月', '8月', '9月', '10月', '11月', '12月',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _year = widget.initialDate.year;
+    _selectedYear = widget.initialDate.year;
+    _selectedMonth = widget.initialDate.month;
+  }
+
+  bool _isEnabled(int month) {
+    final d = DateTime(_year, month);
+    return !d.isBefore(
+            DateTime(widget.firstDate.year, widget.firstDate.month)) &&
+        !d.isAfter(DateTime(widget.lastDate.year, widget.lastDate.month));
+  }
+
+  bool _isSelected(int month) =>
+      _year == _selectedYear && month == _selectedMonth;
+
+  bool _isCurrentMonth(int month) {
+    final now = DateTime.now();
+    return _year == now.year && month == now.month;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final canPrev = _year > widget.firstDate.year;
+    final canNext = _year < widget.lastDate.year;
+
+    return Dialog(
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: cs.surfaceContainerLowest,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header label
+            Text(
+              '选择月份',
+              style: tt.titleSmall?.copyWith(
+                  color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 14),
+            // Year navigation
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _PickerNavButton(
+                  icon: Icons.chevron_left_rounded,
+                  enabled: canPrev,
+                  onTap: () => setState(() => _year--),
+                  cs: cs,
+                ),
+                Text(
+                  '$_year年',
+                  style: tt.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                _PickerNavButton(
+                  icon: Icons.chevron_right_rounded,
+                  enabled: canNext,
+                  onTap: () => setState(() => _year++),
+                  cs: cs,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // Month grid
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 2.1,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: 12,
+              itemBuilder: (ctx, i) {
+                final month = i + 1;
+                final enabled = _isEnabled(month);
+                final selected = _isSelected(month);
+                final current = _isCurrentMonth(month);
+                return _MonthCell(
+                  label: _monthLabels[i],
+                  selected: selected,
+                  isCurrent: current,
+                  enabled: enabled,
+                  cs: cs,
+                  onTap: enabled
+                      ? () {
+                          setState(() {
+                            _selectedYear = _year;
+                            _selectedMonth = month;
+                          });
+                          Navigator.of(ctx)
+                              .pop(DateTime(_year, month, 1));
+                        }
+                      : null,
+                );
+              },
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthCell extends StatelessWidget {
+  const _MonthCell({
+    required this.label,
+    required this.selected,
+    required this.isCurrent,
+    required this.enabled,
+    required this.cs,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final bool isCurrent;
+  final bool enabled;
+  final ColorScheme cs;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    Color? bgColor;
+    Color? textColor;
+    BoxBorder? border;
+    FontWeight fontWeight = FontWeight.w500;
+
+    if (selected) {
+      bgColor = cs.primary;
+      textColor = cs.onPrimary;
+      fontWeight = FontWeight.w700;
+    } else if (isCurrent && enabled) {
+      border = Border.all(color: cs.primary, width: 1.5);
+      textColor = cs.primary;
+      fontWeight = FontWeight.w600;
+    } else if (!enabled) {
+      textColor = cs.onSurface.withAlpha(56);
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          border: border,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: fontWeight,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Week Picker Dialog ────────────────────────────────────────────────────────
+
+class _WeekPickerDialog extends StatefulWidget {
+  const _WeekPickerDialog({
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+  });
+  final DateTime initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  @override
+  State<_WeekPickerDialog> createState() => _WeekPickerDialogState();
+}
+
+class _WeekPickerDialogState extends State<_WeekPickerDialog> {
+  late DateTime _viewMonth;
+  late DateTime _selectedMonday;
+
+  static const _dayHeaders = ['一', '二', '三', '四', '五', '六', '日'];
+
+  @override
+  void initState() {
+    super.initState();
+    _viewMonth = DateTime(widget.initialDate.year, widget.initialDate.month);
+    _selectedMonday = widget.initialDate
+        .subtract(Duration(days: widget.initialDate.weekday - 1));
+  }
+
+  bool _canPrevMonth() {
+    final prev = DateTime(_viewMonth.year, _viewMonth.month - 1);
+    return !prev.isBefore(
+        DateTime(widget.firstDate.year, widget.firstDate.month));
+  }
+
+  bool _canNextMonth() {
+    final next = DateTime(_viewMonth.year, _viewMonth.month + 1);
+    return !next
+        .isAfter(DateTime(widget.lastDate.year, widget.lastDate.month));
+  }
+
+  List<DateTime?> _buildDays() {
+    final firstDay = DateTime(_viewMonth.year, _viewMonth.month, 1);
+    final lastDay = DateTime(_viewMonth.year, _viewMonth.month + 1, 0);
+    final startPad = firstDay.weekday - 1;
+    final days = <DateTime?>[
+      ...List<DateTime?>.filled(startPad, null),
+      for (int d = 1; d <= lastDay.day; d++)
+        DateTime(_viewMonth.year, _viewMonth.month, d),
+    ];
+    while (days.length % 7 != 0) {
+      days.add(null);
+    }
+    return days;
+  }
+
+  bool _isDayEnabled(DateTime? day) {
+    if (day == null) return false;
+    return !day.isBefore(DateTime(widget.firstDate.year,
+            widget.firstDate.month, widget.firstDate.day)) &&
+        !day.isAfter(DateTime(widget.lastDate.year, widget.lastDate.month,
+            widget.lastDate.day));
+  }
+
+  bool _isInSelectedWeek(DateTime? day) {
+    if (day == null) return false;
+    final sunday = _selectedMonday.add(const Duration(days: 6));
+    return !day.isBefore(_selectedMonday) && !day.isAfter(sunday);
+  }
+
+  void _selectWeekContaining(List<DateTime?> weekRow) {
+    DateTime? firstEnabled;
+    for (final d in weekRow) {
+      if (_isDayEnabled(d)) {
+        firstEnabled = d;
+        break;
+      }
+    }
+    if (firstEnabled == null) return;
+    final monday =
+        firstEnabled.subtract(Duration(days: firstEnabled.weekday - 1));
+    setState(() => _selectedMonday = monday);
+    Navigator.of(context).pop(monday);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final days = _buildDays();
+    final numWeeks = days.length ~/ 7;
+
+    return Dialog(
+      shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: cs.surfaceContainerLowest,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header label
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '选择周',
+                style: tt.titleSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w500),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Month/year navigation
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _PickerNavButton(
+                  icon: Icons.chevron_left_rounded,
+                  enabled: _canPrevMonth(),
+                  onTap: () => setState(() => _viewMonth =
+                      DateTime(_viewMonth.year, _viewMonth.month - 1)),
+                  cs: cs,
+                ),
+                Text(
+                  '${_viewMonth.year}年${_viewMonth.month}月',
+                  style: tt.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                _PickerNavButton(
+                  icon: Icons.chevron_right_rounded,
+                  enabled: _canNextMonth(),
+                  onTap: () => setState(() => _viewMonth =
+                      DateTime(_viewMonth.year, _viewMonth.month + 1)),
+                  cs: cs,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Day-of-week header row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Row(
+                children: List.generate(_dayHeaders.length, (i) {
+                  final isWeekend = i >= 5;
+                  return Expanded(
+                    child: Center(
+                      child: Text(
+                        _dayHeaders[i],
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isWeekend
+                              ? cs.error.withAlpha(160)
+                              : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 6),
+            // Week rows
+            for (int w = 0; w < numWeeks; w++)
+              _buildWeekRow(days.sublist(w * 7, (w + 1) * 7), cs),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekRow(List<DateTime?> row, ColorScheme cs) {
+    final hasEnabled = row.any(_isDayEnabled);
+    final isSelected = row.any(_isInSelectedWeek);
+    final today = DateTime.now();
+
+    return GestureDetector(
+      onTap: hasEnabled ? () => _selectWeekContaining(row) : null,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        height: 42,
+        decoration: isSelected && hasEnabled
+            ? BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              )
+            : null,
+        child: Row(
+          children: List.generate(row.length, (i) {
+            final day = row[i];
+            final enabled = _isDayEnabled(day);
+            final inSel = _isInSelectedWeek(day);
+            final isToday = day != null &&
+                day.year == today.year &&
+                day.month == today.month &&
+                day.day == today.day;
+
+            return Expanded(
+              child: Center(
+                child: day == null
+                    ? const SizedBox.shrink()
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${day.day}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: !enabled
+                                  ? cs.onSurface.withAlpha(48)
+                                  : inSel
+                                      ? cs.onPrimaryContainer
+                                      : null,
+                              fontWeight: inSel || isToday
+                                  ? FontWeight.w700
+                                  : null,
+                            ),
+                          ),
+                          if (isToday)
+                            Container(
+                              width: 4,
+                              height: 4,
+                              margin: const EdgeInsets.only(top: 1),
+                              decoration: BoxDecoration(
+                                color: cs.primary,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shared picker nav button ──────────────────────────────────────────────────
+
+class _PickerNavButton extends StatelessWidget {
+  const _PickerNavButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+    required this.cs,
+  });
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+  final ColorScheme cs;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? cs.onSurface : cs.onSurface.withAlpha(48),
+        ),
+      ),
+    );
+  }
 }

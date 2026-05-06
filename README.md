@@ -14,13 +14,13 @@ A feature-rich GitHub client built with **Flutter**, targeting **HarmonyOS** and
 ### Discovery
 - **Trending** — daily/weekly/monthly trending repos with language filter
 - **Featured** — algorithm-curated and manually-picked repository recommendations
-- **Daily report** — AI-generated daily GitHub trend analysis (zh/en)
+- **Daily report** — AI-generated daily GitHub trend analysis (zh/en) with **QR-coded share cards**
 - **Repo analysis** — AI-powered repository breakdown (tech stack, architecture, pros/cons)
 
 ### Social
 - **User profile** — contribution heatmap (8 theme colors), pinned/top repos, organizations, followers/following
 - **Follow/unfollow**, **star/unstar** — with optimistic UI and memory cache
-- **Share** — repository & profile sharing via native share sheet
+- **Share** — repository & profile sharing via native share sheet and custom image cards
 
 ### Pro Membership
 - Subscription management with monthly/yearly/lifetime plans
@@ -32,6 +32,8 @@ A feature-rich GitHub client built with **Flutter**, targeting **HarmonyOS** and
 - **Create repository** — create new GitHub repos directly from the app
 - **File viewer** — inline code viewer with syntax highlighting
 - **Commit diff viewer** — per-file diff detail with additions/deletions
+- **Sensitive content filter** — client-side content filtering for safety and compliance
+- **Privacy & Feedback** — built-in feedback system and policy viewers
 - **Dark mode** — full dark/light theme support with system-follow option
 - **i18n** — Chinese (zh) and English (en) localization
 
@@ -151,6 +153,10 @@ hvigorw assembleHap
 | API base URLs | `lib/utils/constants.dart` |
 | HarmonyOS signing | `ohos/build-profile.json5` |
 | App version | `pubspec.yaml` → `version` |
+
+## 📚 Documentation
+
+Detailed documentation, design documents, and project walkthroughs are located in the [docs/](./docs) directory. For AI agent specific rules and compatibility guidelines, refer to [AGENTS.md](./AGENTS.md).
 
 ## 📄 License
 
