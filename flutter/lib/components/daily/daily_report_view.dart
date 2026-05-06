@@ -252,9 +252,10 @@ Map<String, dynamic> dailyReportWithRepositoryData(
 }
 
 class DailyReportView extends StatelessWidget {
-  const DailyReportView({super.key, required this.report});
+  const DailyReportView({super.key, required this.report, this.onShare});
 
   final Map<String, dynamic> report;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +286,7 @@ class DailyReportView extends StatelessWidget {
           language: report['language'] as String?,
           updatedAt: report['updated_at'] as String?,
           topics: topics,
+          onShare: onShare,
         ),
         if (sections.introduction.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -300,7 +302,7 @@ class DailyReportView extends StatelessWidget {
           const SizedBox(height: 20),
           const _SectionTitle(icon: Icons.star_border, title: '精选仓库'),
           const SizedBox(height: 10),
-          ...topRepos.take(5).map((repo) => _TopRepoTile(data: repo)),
+          _TopRepoRail(repos: topRepos.take(5).toList()),
         ],
         if (sections.sections.isNotEmpty) ...[
           const SizedBox(height: 20),
@@ -327,6 +329,7 @@ class _ReportHeader extends StatelessWidget {
     required this.language,
     required this.updatedAt,
     required this.topics,
+    this.onShare,
   });
 
   final String title;
@@ -334,6 +337,7 @@ class _ReportHeader extends StatelessWidget {
   final String? language;
   final String? updatedAt;
   final List<String> topics;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -374,6 +378,17 @@ class _ReportHeader extends StatelessWidget {
               ),
               if (language != null && language!.isNotEmpty)
                 _MetaPill(label: language!.toUpperCase()),
+              if (onShare != null) ...[                const SizedBox(width: 6),
+                InkWell(
+                  onTap: onShare,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.ios_share_outlined,
+                        size: 18, color: cs.primary),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 14),
@@ -631,6 +646,27 @@ class _LanguageSummaryCard extends StatelessWidget {
   }
 }
 
+class _TopRepoRail extends StatelessWidget {
+  const _TopRepoRail({required this.repos});
+  final List<Map<String, dynamic>> repos;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 124,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: repos.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) => SizedBox(
+          width: 260,
+          child: _TopRepoTile(data: repos[index]),
+        ),
+      ),
+    );
+  }
+}
+
 class _TopRepoTile extends StatelessWidget {
   const _TopRepoTile({required this.data});
 
@@ -650,7 +686,6 @@ class _TopRepoTile extends StatelessWidget {
       onTap: ref == null ? null : () => context.push(ref.route),
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: cs.surfaceContainer,

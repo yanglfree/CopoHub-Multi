@@ -70,8 +70,7 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
       appBar: AppBar(
         leading: TextButton(
           onPressed: () => context.pop(),
-          child: Text('取消',
-              style: TextStyle(color: cs.primary, fontSize: 16)),
+          child: Text('取消', style: TextStyle(color: cs.primary, fontSize: 16)),
         ),
         leadingWidth: 60,
         title: const Text('新建仓库',
@@ -98,7 +97,7 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
           padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
             // ── 仓库详情 ───────────────────────────────────────────────────
-            _SectionLabel(label: '仓库详情'),
+            const _SectionLabel(label: '仓库详情'),
             _InputCard(
               child: Column(
                 children: [
@@ -129,13 +128,11 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
             const SizedBox(height: 20),
 
             // ── 可见性 ─────────────────────────────────────────────────────
-            _SectionLabel(label: '可见性'),
+            const _SectionLabel(label: '可见性'),
             _InputCard(
               child: _ToggleRow(
                 title: '私有仓库',
-                subtitle: _isPrivate
-                    ? '只有你和你添加的协作者可见'
-                    : '任何人都可以看到这个仓库',
+                subtitle: _isPrivate ? '只有你和你添加的协作者可见' : '任何人都可以看到这个仓库',
                 value: _isPrivate,
                 onChanged: (v) => setState(() => _isPrivate = v),
               ),
@@ -143,7 +140,7 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
             const SizedBox(height: 20),
 
             // ── 功能 ───────────────────────────────────────────────────────
-            _SectionLabel(label: '功能'),
+            const _SectionLabel(label: '功能'),
             _InputCard(
               child: Column(
                 children: [
@@ -180,15 +177,14 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
             const SizedBox(height: 20),
 
             // ── 初始化仓库 ─────────────────────────────────────────────────
-            _SectionLabel(label: '初始化仓库'),
+            const _SectionLabel(label: '初始化仓库'),
             _InputCard(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: Text(
                   '创建后可以添加 .gitignore 模板和开源协议',
-                  style: TextStyle(
-                      fontSize: 14, color: cs.onSurfaceVariant),
+                  style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
                 ),
               ),
             ),
@@ -301,8 +297,7 @@ class _ToggleRow extends StatelessWidget {
                         fontSize: 16, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
                 Text(subtitle,
-                    style: TextStyle(
-                        fontSize: 13, color: cs.onSurfaceVariant)),
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
               ],
             ),
           ),
@@ -343,8 +338,8 @@ class _CheckRow extends StatelessWidget {
                           fontSize: 16, fontWeight: FontWeight.w500)),
                   const SizedBox(height: 2),
                   Text(subtitle,
-                      style: TextStyle(
-                          fontSize: 13, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
                 ],
               ),
             ),

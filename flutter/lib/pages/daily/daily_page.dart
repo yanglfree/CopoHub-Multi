@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/daily_api_client.dart';
+import '../../components/daily/daily_report_share_card.dart';
 import '../../components/daily/daily_report_view.dart';
 import '../../models/trending_item.dart';
 import '../../utils/constants.dart';
@@ -32,6 +33,7 @@ class _DailyPageState extends State<DailyPage> {
   Map<String, dynamic>? _report;
   bool _reportLoading = false;
   String _reportError = '';
+  bool _reportNotFound = false;
 
   static String _todayStr() {
     final now = DateTime.now();
@@ -95,6 +97,7 @@ class _DailyPageState extends State<DailyPage> {
 
     if (result.isSuccess) {
       setState(() {
+        _reportNotFound = false;
         _report = dailyReportWithRepositoryData(
           result.data!,
           trendingResult?.data?.items
@@ -111,8 +114,18 @@ class _DailyPageState extends State<DailyPage> {
         );
         _reportLoading = false;
       });
+    } else if (result.error == 'not_found') {
+      setState(() {
+        _reportNotFound = true;
+        final isToday = _selectedDate == _todayStr();
+        _reportError = isToday
+            ? '今日报告尚未生成\n通常于每天下午发布，请稍后再来'
+            : '该日期暂无报告数据';
+        _reportLoading = false;
+      });
     } else {
       setState(() {
+        _reportNotFound = false;
         _reportError = result.message ?? '加载失败';
         _reportLoading = false;
       });
@@ -245,6 +258,7 @@ class _DailyPageState extends State<DailyPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_reportError.isNotEmpty) {
+      if (_reportNotFound) return _ReportNotReadyView(message: _reportError);
       return _ErrorView(
           message: _reportError,
           onRetry: () => _loadReport(forceRefresh: true));
@@ -252,7 +266,10 @@ class _DailyPageState extends State<DailyPage> {
     if (_report == null) {
       return const _EmptyView(message: '暂无报告数据');
     }
-    return DailyReportView(report: _report!);
+    return DailyReportView(
+      report: _report!,
+      onShare: () => showDailyReportShareSheet(context, _report!),
+    );
   }
 }
 
@@ -621,6 +638,29 @@ class _RankDeltaBadge extends StatelessWidget {
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
+
+class _ReportNotReadyView extends StatelessWidget {
+  const _ReportNotReadyView({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.schedule_outlined,
+                size: 48, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
+}
 
 class _ErrorView extends StatelessWidget {
   const _ErrorView({required this.message, required this.onRetry});

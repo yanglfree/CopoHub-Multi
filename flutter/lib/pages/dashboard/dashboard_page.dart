@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../utils/platform_utils.dart';
+import '../../components/navigation/adaptive_bottom_navigation.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -42,33 +42,13 @@ class _DashboardPageState extends State<DashboardPage> {
           _PlaceholderTab(label: '我的 — 开发中'),
         ],
       ),
-      bottomNavigationBar: _withCompactOhosBottomInset(
-        context,
-        NavigationBar(
-          height: 64,
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-          indicatorColor: isOhos ? Colors.transparent : null,
-          destinations: _destinations,
-        ),
+      bottomNavigationBar: AdaptiveBottomNavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+        destinations: _destinations,
       ),
     );
   }
-}
-
-Widget _withCompactOhosBottomInset(BuildContext context, Widget child) {
-  if (!isOhos) {
-    return child;
-  }
-
-  final media = MediaQuery.of(context);
-  final padding = media.padding;
-  return MediaQuery(
-    data: media.copyWith(
-      padding: padding.copyWith(bottom: padding.bottom == 0 ? 0 : 8),
-    ),
-    child: child,
-  );
 }
 
 class _PlaceholderTab extends StatelessWidget {

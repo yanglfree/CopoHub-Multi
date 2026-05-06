@@ -127,8 +127,7 @@ class _RepoAnalysisPageState extends State<RepoAnalysisPage> {
               icon: const Icon(Icons.open_in_new),
               tooltip: '在 GitHub 打开',
               onPressed: () => launchUrl(
-                Uri.parse(
-                    'https://github.com/${widget.owner}/${widget.repo}'),
+                Uri.parse('https://github.com/${widget.owner}/${widget.repo}'),
                 mode: LaunchMode.externalApplication,
               ),
             ),
@@ -200,8 +199,7 @@ class _GeneratingViewState extends State<_GeneratingView>
           children: [
             RotationTransition(
               turns: _anim,
-              child: Icon(Icons.auto_awesome,
-                  size: 56, color: cs.primary),
+              child: Icon(Icons.auto_awesome, size: 56, color: cs.primary),
             ),
             const SizedBox(height: 24),
             Text(
@@ -355,9 +353,7 @@ class _AnalysisContent extends StatelessWidget {
               child: Text(
                 analysis.analysisSummary,
                 style: TextStyle(
-                    fontSize: 13,
-                    color: cs.onPrimaryContainer,
-                    height: 1.5),
+                    fontSize: 13, color: cs.onPrimaryContainer, height: 1.5),
               ),
             ),
             const SizedBox(height: 16),
@@ -380,7 +376,7 @@ class _AnalysisContent extends StatelessWidget {
 
           // Tech stack chips
           if (analysis.techStack.isNotEmpty) ...[
-            _SectionHeader(title: '技术栈'),
+            const _SectionHeader(title: '技术栈'),
             const SizedBox(height: 8),
             _ChipSection(data: analysis.techStack),
             const SizedBox(height: 16),
@@ -388,7 +384,7 @@ class _AnalysisContent extends StatelessWidget {
 
           // Key features
           if (analysis.keyFeatures.isNotEmpty) ...[
-            _SectionHeader(title: '核心功能'),
+            const _SectionHeader(title: '核心功能'),
             const SizedBox(height: 8),
             _ChipSection(data: analysis.keyFeatures),
             const SizedBox(height: 16),
@@ -396,7 +392,7 @@ class _AnalysisContent extends StatelessWidget {
 
           // Use cases
           if (analysis.useCases.isNotEmpty) ...[
-            _SectionHeader(title: '使用场景'),
+            const _SectionHeader(title: '使用场景'),
             const SizedBox(height: 8),
             _ChipSection(data: analysis.useCases),
             const SizedBox(height: 16),
@@ -458,8 +454,7 @@ class _RepoHeaderCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text(analysis.language,
-                      style: const TextStyle(fontSize: 12)),
+                  Text(analysis.language, style: const TextStyle(fontSize: 12)),
                   const SizedBox(width: 12),
                 ],
                 const Icon(Icons.star_border, size: 13),
@@ -503,9 +498,7 @@ class _ChipSection extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: entries.map((e) {
-        final label = e.value is String
-            ? e.value as String
-            : e.key;
+        final label = e.value is String ? e.value as String : e.key;
         return Chip(
           label: Text(label, style: const TextStyle(fontSize: 12)),
           visualDensity: VisualDensity.compact,

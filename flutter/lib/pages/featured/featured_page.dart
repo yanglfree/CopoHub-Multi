@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../api/api_cache.dart';
 import '../../api/copohub_api_client.dart';
 import '../../api/daily_api_client.dart';
+import '../../components/daily/daily_report_share_card.dart';
 import '../../components/daily/daily_report_view.dart';
 import '../../models/copohub_curated_item.dart';
 import '../../models/deduplicated_repo_item.dart';
@@ -39,6 +40,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
   Map<String, dynamic>? _report;
   bool _reportLoading = false;
   String _reportError = '';
+  bool _reportNotFound = false;
 
   List<DeduplicatedRepoItem> _deduped = [];
   bool _dedupedLoading = false;
@@ -94,6 +96,20 @@ class _FeaturedPageState extends State<FeaturedPage> {
 
   // ── Data loading ─────────────────────────────────────────────────────────
 
+  // Normalize date for weekly/monthly API requests.
+  // Weekly data is anchored to Monday; monthly to the 1st of the month.
+  String _effectiveApiDate() {
+    final dt = DateTime.tryParse(_selectedDate) ?? DateTime.now();
+    switch (_since) {
+      case 'weekly':
+        return _formatDate(dt.subtract(Duration(days: dt.weekday - 1)));
+      case 'monthly':
+        return _formatDate(DateTime(dt.year, dt.month, 1));
+      default:
+        return _selectedDate;
+    }
+  }
+
   Future<void> _loadTrending({bool force = false}) async {
     if (_trendingLoading) return;
     if (force) await _dailyApi.clearCache(date: _selectedDate);
@@ -102,7 +118,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
       _trendingError = '';
     });
     final result = await _dailyApi.getTrending(
-      _selectedDate,
+      _effectiveApiDate(),
       language: _language.isEmpty ? null : _language,
       since: _since,
       limit: 25,
@@ -112,6 +128,15 @@ class _FeaturedPageState extends State<FeaturedPage> {
       _trendingLoading = false;
       if (result.isSuccess) {
         _trending = result.data?.items ?? [];
+        // If the languages API returned nothing, derive from trending items.
+        if (_languages.isEmpty && _trending.isNotEmpty) {
+          _languages = _trending
+              .map((t) => t.language)
+              .where((l) => l.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
+        }
       } else {
         _trendingError = result.message ?? '加载失败';
       }
@@ -133,6 +158,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
     setState(() {
       _reportLoading = false;
       if (result.isSuccess) {
+        _reportNotFound = false;
         _report = dailyReportWithRepositoryData(
           result.data!,
           trendingResult?.data?.items
@@ -147,7 +173,12 @@ class _FeaturedPageState extends State<FeaturedPage> {
                   .toList() ??
               const <Map<String, dynamic>>[],
         );
+      } else if (result.error == 'not_found') {
+        _reportNotFound = true;
+        final isToday = _selectedDate == _todayStr();
+        _reportError = isToday ? '今日报告尚未生成\n通常于每天下午发布，请稍后再来' : '该日期暂无报告数据';
       } else {
+        _reportNotFound = false;
         _reportError = result.message ?? '加载失败';
       }
     });
@@ -181,7 +212,15 @@ class _FeaturedPageState extends State<FeaturedPage> {
 
   void _changeDate(int delta) {
     final current = DateTime.tryParse(_selectedDate) ?? DateTime.now();
-    final next = current.add(Duration(days: delta));
+    final DateTime next;
+    switch (_since) {
+      case 'weekly':
+        next = current.add(Duration(days: 7 * delta));
+      case 'monthly':
+        next = DateTime(current.year, current.month + delta, 1);
+      default:
+        next = current.add(Duration(days: delta));
+    }
     if (next.isAfter(DateTime.now())) return;
     _setDate(next);
   }
@@ -294,6 +333,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
                       report: _report,
                       reportLoading: _reportLoading,
                       reportError: _reportError,
+                      reportNotFound: _reportNotFound,
                       deduped: _deduped,
                       dedupedLoading: _dedupedLoading,
                       dedupedError: _dedupedError,
@@ -450,6 +490,7 @@ class _GitHubTab extends StatelessWidget {
     required this.report,
     required this.reportLoading,
     required this.reportError,
+    required this.reportNotFound,
     required this.deduped,
     required this.dedupedLoading,
     required this.dedupedError,
@@ -479,6 +520,7 @@ class _GitHubTab extends StatelessWidget {
   final Map<String, dynamic>? report;
   final bool reportLoading;
   final String reportError;
+  final bool reportNotFound;
   final List<DeduplicatedRepoItem> deduped;
   final bool dedupedLoading;
   final String dedupedError;
@@ -530,6 +572,7 @@ class _GitHubTab extends StatelessWidget {
                       report: report,
                       loading: reportLoading,
                       error: reportError,
+                      notFound: reportNotFound,
                       onRetry: onRetryReport,
                     )
                   : _FrequentView(
@@ -565,17 +608,31 @@ class _DatePickerHeader extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onTap;
 
-  bool _isToday() {
+  // True when the selected date falls within the current daily/weekly/monthly period.
+  bool _isCurrentPeriod() {
     final today = DateTime.now();
     final current = DateTime.tryParse(date);
-    return current != null &&
-        current.year == today.year &&
-        current.month == today.month &&
-        current.day == today.day;
+    if (current == null) return false;
+    switch (since) {
+      case 'weekly':
+        final currentMonday =
+            today.subtract(Duration(days: today.weekday - 1));
+        final dateMonday =
+            current.subtract(Duration(days: current.weekday - 1));
+        return currentMonday.year == dateMonday.year &&
+            currentMonday.month == dateMonday.month &&
+            currentMonday.day == dateMonday.day;
+      case 'monthly':
+        return current.year == today.year && current.month == today.month;
+      default:
+        return current.year == today.year &&
+            current.month == today.month &&
+            current.day == today.day;
+    }
   }
 
   String _displayDate() {
-    if (_isToday()) {
+    if (_isCurrentPeriod()) {
       switch (since) {
         case 'weekly':
           return formatDailyReportDateLabel(date, todayLabel: '本周');
@@ -588,6 +645,17 @@ class _DatePickerHeader extends StatelessWidget {
     }
     try {
       final dt = DateTime.parse(date);
+      if (since == 'weekly') {
+        final monday = dt.subtract(Duration(days: dt.weekday - 1));
+        final sunday = monday.add(const Duration(days: 6));
+        if (monday.month == sunday.month) {
+          return '${monday.month}月${monday.day}日-${sunday.day}日';
+        }
+        return '${monday.month}月${monday.day}日-${sunday.month}月${sunday.day}日';
+      }
+      if (since == 'monthly') {
+        return '${dt.year}年${dt.month.toString().padLeft(2, '0')}月';
+      }
       return '${dt.year}年${dt.month.toString().padLeft(2, '0')}月${dt.day.toString().padLeft(2, '0')}日';
     } catch (_) {
       return date;
@@ -634,9 +702,9 @@ class _DatePickerHeader extends StatelessWidget {
           IconButton(
             icon: Icon(
               Icons.chevron_right,
-              color: _isToday() ? cs.onSurface.withAlpha(77) : null,
+              color: _isCurrentPeriod() ? cs.onSurface.withAlpha(77) : null,
             ),
-            onPressed: _isToday() ? null : onNext,
+            onPressed: _isCurrentPeriod() ? null : onNext,
           ),
         ],
       ),
@@ -1315,19 +1383,27 @@ class _ReportView extends StatelessWidget {
     required this.loading,
     required this.error,
     required this.onRetry,
+    this.notFound = false,
   });
   final Map<String, dynamic>? report;
   final bool loading;
   final String error;
+  final bool notFound;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
     if (loading) return const Center(child: CircularProgressIndicator());
-    if (error.isNotEmpty) return _ErrorRetry(message: error, onRetry: onRetry);
+    if (error.isNotEmpty) {
+      if (notFound) return _ReportNotReady(message: error);
+      return _ErrorRetry(message: error, onRetry: onRetry);
+    }
     if (report == null) return const _Empty(message: '暂无报告数据');
 
-    return DailyReportView(report: report!);
+    return DailyReportView(
+      report: report!,
+      onShare: () => showDailyReportShareSheet(context, report!),
+    );
   }
 }
 
@@ -1354,26 +1430,30 @@ class _CopoHubTab extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return RefreshIndicator(
       onRefresh: () async => onRetry(),
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         itemCount: items.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           if (i == 0) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Text(
+            return Row(
+              children: [
+                Expanded(
+                  child: Text(
                     '由 CopoHub 编辑团队精心挑选',
-                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
-                  const Spacer(),
-                  Text(
-                    '共 ${items.length} 个项目',
-                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '共 ${items.length} 个项目',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+              ],
             );
           }
           return _CuratedCard(item: items[i - 1]);
@@ -1405,13 +1485,13 @@ class _CuratedCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: EdgeInsets.zero,
       child: InkWell(
         onTap: () => context.push(
           '/curated',
           extra: item,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -1610,6 +1690,29 @@ class _ErrorRetry extends StatelessWidget {
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+          ],
+        ),
+      );
+}
+
+class _ReportNotReady extends StatelessWidget {
+  const _ReportNotReady({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.schedule_outlined,
+                size: 48, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
           ],
         ),
       );

@@ -38,53 +38,44 @@ class _HomePageState extends State<HomePage>
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverOverlapAbsorber(
-            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-            sliver: SliverAppBar(
-              pinned: true,
-              forceElevated: innerBoxIsScrolled,
-              title: const Text(
-                '首页',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: GestureDetector(
-                    onTap: () => context.push('/repository/new'),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        // Flutter-OH does not support Color.withValues yet.
-                        // ignore: deprecated_member_use
-                        color: cs.primary.withOpacity(0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.add, color: cs.primary, size: 22),
-                    ),
-                  ),
+      appBar: AppBar(
+        title: const Text(
+          '首页',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: () => context.push('/repository/new'),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  // Flutter-OH does not support Color.withValues yet.
+                  // ignore: deprecated_member_use
+                  color: cs.primary.withOpacity(0.12),
+                  shape: BoxShape.circle,
                 ),
-              ],
-              bottom: TabBar(
-                controller: _tabController,
-                tabs: const [
-                  Tab(text: '我的仓库'),
-                  Tab(text: 'Star 仓库'),
-                ],
+                child: Icon(Icons.add, color: cs.primary, size: 22),
               ),
             ),
           ),
         ],
-        body: TabBarView(
+        bottom: TabBar(
           controller: _tabController,
-          children: [
-            _UserReposTab(username: _currentUser?.login ?? ''),
-            _StarredReposTab(username: _currentUser?.login ?? ''),
+          tabs: const [
+            Tab(text: '我的仓库'),
+            Tab(text: 'Star 仓库'),
           ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _UserReposTab(username: _currentUser?.login ?? ''),
+          _StarredReposTab(username: _currentUser?.login ?? ''),
+        ],
       ),
     );
   }
@@ -303,9 +294,6 @@ class _UserReposTabState extends State<_UserReposTab>
       child: CustomScrollView(
         key: const PageStorageKey<String>('home-user-repos'),
         slivers: [
-          SliverOverlapInjector(
-            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-          ),
           // ── Header row: 全部仓库 + 筛选 ──────────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
@@ -494,9 +482,6 @@ class _StarredReposTabState extends State<_StarredReposTab>
       child: CustomScrollView(
         key: const PageStorageKey<String>('home-starred-repos'),
         slivers: [
-          SliverOverlapInjector(
-            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-          ),
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverList(
             delegate: SliverChildBuilderDelegate(

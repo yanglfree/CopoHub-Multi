@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../components/navigation/adaptive_bottom_navigation.dart';
 import '../providers/auth_provider.dart';
 import '../services/auth_service.dart';
 import '../pages/splash/splash_page.dart';
@@ -28,7 +29,6 @@ import '../pages/commit/commit_detail_page.dart';
 import '../pages/commit/diff_file_detail_page.dart';
 import '../pages/file_viewer/file_viewer_page.dart';
 import '../pages/featured/featured_page.dart';
-import '../utils/platform_utils.dart';
 
 // ── Route names ───────────────────────────────────────────────────────────────
 
@@ -306,59 +306,38 @@ class _DashboardShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: shell,
-      bottomNavigationBar: _withCompactOhosBottomInset(
-        context,
-        NavigationBar(
-          height: 64,
-          selectedIndex: shell.currentIndex,
-          onDestinationSelected: (i) =>
-              shell.goBranch(i, initialLocation: i == shell.currentIndex),
-          // HarmonyOS 平台不显示选中指示器（pill 背景）
-          indicatorColor: isOhos ? Colors.transparent : null,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: '首页',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore),
-              label: '发现',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.star_outline),
-              selectedIcon: Icon(Icons.star),
-              label: '精选',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.notifications_outlined),
-              selectedIcon: Icon(Icons.notifications),
-              label: '通知',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: '我的',
-            ),
-          ],
-        ),
+      bottomNavigationBar: AdaptiveBottomNavigationBar(
+        selectedIndex: shell.currentIndex,
+        onDestinationSelected: (i) =>
+            shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: '首页',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.explore_outlined),
+            selectedIcon: Icon(Icons.explore),
+            label: '发现',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.star_outline),
+            selectedIcon: Icon(Icons.star),
+            label: '精选',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.notifications_outlined),
+            selectedIcon: Icon(Icons.notifications),
+            label: '通知',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: '我的',
+          ),
+        ],
       ),
     );
   }
-}
-
-Widget _withCompactOhosBottomInset(BuildContext context, Widget child) {
-  if (!isOhos) {
-    return child;
-  }
-
-  final media = MediaQuery.of(context);
-  final padding = media.padding;
-  return MediaQuery(
-    data: media.copyWith(
-      padding: padding.copyWith(bottom: padding.bottom == 0 ? 0 : 8),
-    ),
-    child: child,
-  );
 }

@@ -34,6 +34,7 @@ class AppLocalizations {
   String get noCommits => _zh ? '暂无提交' : 'No commits';
   String get noFiles => _zh ? '暂无文件' : 'No files';
   String get loadFailed => _zh ? '加载失败' : 'Load failed';
+  String get readmeLoadFailed => _zh ? 'README 加载失败' : 'Failed to load README';
   String get retry => _zh ? '重试' : 'Retry';
 
   // ── Branch ────────────────────────────────────────────────────────────────
@@ -50,8 +51,7 @@ class _AppLocalizationsDelegate
   const _AppLocalizationsDelegate();
 
   @override
-  bool isSupported(Locale locale) =>
-      ['en', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => ['en', 'zh'].contains(locale.languageCode);
 
   @override
   Future<AppLocalizations> load(Locale locale) async =>
