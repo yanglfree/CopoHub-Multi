@@ -25,6 +25,7 @@ import '../pages/member/member_gate_page.dart';
 import '../pages/user_profile/user_repositories_page.dart';
 import '../pages/create_repo/create_repo_page.dart';
 import '../pages/issue/issue_detail_page.dart';
+import '../pages/pull_request/pr_detail_page.dart';
 import '../pages/commit/commit_detail_page.dart';
 import '../pages/commit/diff_file_detail_page.dart';
 import '../pages/file_viewer/file_viewer_page.dart';
@@ -55,6 +56,9 @@ class AppRoutes {
 
   // Issue
   static const issue = '/issue/:owner/:repo/:number';
+
+  // Pull Request
+  static const pullRequest = '/pr/:owner/:repo/:number';
 
   // File viewer
   static const fileViewer = '/file-viewer';
@@ -195,6 +199,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.issue,
         builder: (_, state) => IssueDetailPage(
+          owner: state.pathParameters['owner']!,
+          repo: state.pathParameters['repo']!,
+          number: int.tryParse(state.pathParameters['number']!) ?? 0,
+        ),
+      ),
+
+      // ── Pull Request ────────────────────────────────────────────────────────
+      GoRoute(
+        path: AppRoutes.pullRequest,
+        builder: (_, state) => PrDetailPage(
           owner: state.pathParameters['owner']!,
           repo: state.pathParameters['repo']!,
           number: int.tryParse(state.pathParameters['number']!) ?? 0,

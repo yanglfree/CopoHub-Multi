@@ -327,6 +327,23 @@ Contact Email: copohub@163.com''';
   String get filterOpen => _zh ? '开放' : 'Open';
   String get filterClosed => _zh ? '已关闭' : 'Closed';
 
+  // ── Pull Request ──────────────────────────────────────────────────────────
+  String get noPullRequests => _zh ? '暂无 Pull Requests' : 'No Pull Requests';
+  String get prMerge => _zh ? '合并 PR' : 'Merge PR';
+  String get prClose => _zh ? '关闭 PR' : 'Close PR';
+  String get prReopen => _zh ? '重新开启' : 'Reopen';
+  String get prMerged => _zh ? 'Merged' : 'Merged';
+  String get prDraft => _zh ? 'Draft' : 'Draft';
+  String get prFilesChanged => _zh ? '文件变更' : 'Files changed';
+  String get prReviews => _zh ? '审阅' : 'Reviews';
+  String get prBranches => _zh ? '分支' : 'Branches';
+  String get prMergeSuccess => _zh ? 'PR 已合并' : 'PR merged successfully';
+  String get prMergeFail => _zh ? '合并失败' : 'Merge failed';
+  String get prCloseSuccess => _zh ? 'PR 已关闭' : 'PR closed';
+  String get prReopenSuccess => _zh ? 'PR 已重新开启' : 'PR reopened';
+  String get prOperationFail => _zh ? '操作失败' : 'Operation failed';
+  String get tabIssuesAndPrs => _zh ? '问题 & PR' : 'Issues & PRs';
+
   // ── Empty & error states ──────────────────────────────────────────────────
   String get noReadme => _zh ? '暂无 README' : 'No README';
   String get noIssues => _zh ? '暂无 Issues' : 'No Issues';
