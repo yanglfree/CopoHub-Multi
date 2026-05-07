@@ -13,7 +13,7 @@ import '../../l10n/app_localizations.dart';
 // webview_flutter uses the OpenHarmony-SIG fork which provides ohos support.
 bool get _isOhos => isOhos;
 
-const _ohosClipboardChannel = MethodChannel('com.copohub/clipboard');
+const _ohosClipboardChannel = MethodChannel('com.youdroid/clipboard');
 const _appIconAsset = 'assets/images/ic_icon.png';
 
 class LoginPage extends StatefulWidget {

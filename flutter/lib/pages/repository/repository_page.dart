@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/repository/branch_tag_picker_bottom_sheet.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -41,6 +42,7 @@ class _RepositoryPageState extends State<RepositoryPage>
   bool _isStarred = false;
   int _starCount = 0;
   List<Map<String, dynamic>> _branches = [];
+  List<Map<String, dynamic>> _tags = [];
 
   late final TabController _tab;
   late final List<int> _tabScrollResetVersions;
@@ -60,6 +62,7 @@ class _RepositoryPageState extends State<RepositoryPage>
     }
     _loadRepo();
     _loadBranches();
+    _loadTags();
   }
 
   @override
@@ -128,6 +131,14 @@ class _RepositoryPageState extends State<RepositoryPage>
     if (!mounted) return;
     if (result.isSuccess) {
       setState(() => _branches = result.data ?? []);
+    }
+  }
+
+  Future<void> _loadTags() async {
+    final result = await _api.getRepositoryTags(widget.owner, widget.repo);
+    if (!mounted) return;
+    if (result.isSuccess) {
+      setState(() => _tags = result.data ?? []);
     }
   }
 
@@ -254,6 +265,7 @@ class _RepositoryPageState extends State<RepositoryPage>
                   repo: widget.repo,
                   defaultBranch: repo.defaultBranch,
                   branches: _branches,
+                  tags: _tags,
                   scrollResetVersion: _tabScrollResetVersions[1]),
               _IssuesTab(
                   owner: widget.owner,
@@ -264,6 +276,7 @@ class _RepositoryPageState extends State<RepositoryPage>
                   repo: widget.repo,
                   defaultBranch: repo.defaultBranch,
                   branches: _branches,
+                  tags: _tags,
                   scrollResetVersion: _tabScrollResetVersions[3]),
               _ReleasesTab(
                   owner: widget.owner,
@@ -570,7 +583,6 @@ class _ReadmeTab extends StatefulWidget {
 class _ReadmeTabState extends State<_ReadmeTab>
     with AutomaticKeepAliveClientMixin {
   final _api = GitHubApiClient.instance;
-  final _scrollController = ScrollController();
   String _readmePath = 'README.md';
   String _downloadUrl = '';
   String _htmlUrl = '';
@@ -588,12 +600,6 @@ class _ReadmeTabState extends State<_ReadmeTab>
   }
 
   @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
   void didUpdateWidget(covariant _ReadmeTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.owner != widget.owner ||
@@ -604,8 +610,10 @@ class _ReadmeTabState extends State<_ReadmeTab>
     }
     if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.jumpTo(0);
+      if (!mounted) return;
+      final controller = PrimaryScrollController.maybeOf(context);
+      if (controller == null || !controller.hasClients) return;
+      controller.jumpTo(0);
     });
   }
 
@@ -852,8 +860,9 @@ class _ReadmeTabState extends State<_ReadmeTab>
             final resolved = _resolveReadmeUrl(href, forImage: false);
             dispatchLinkAction(context, resolved);
           },
-          imageBuilder: (uri, title, alt) {
-            final resolved = _resolveReadmeUrl(uri.toString(), forImage: true);
+          sizedImageBuilder: (config) {
+            final resolved =
+                _resolveReadmeUrl(config.uri.toString(), forImage: true);
             if (resolved.isEmpty || resolved == 'about:blank') {
               return const SizedBox.shrink();
             }
@@ -862,13 +871,30 @@ class _ReadmeTabState extends State<_ReadmeTab>
                 resolved.contains('shields.io')) {
               return const SizedBox.shrink();
             }
+            final mq = MediaQuery.of(context);
+            final screenWidth = mq.size.width;
+            final dpr = mq.devicePixelRatio;
+            // Phone (< 600 dp): constrain to screen width.
+            // Pad / large screen: cap at 1080 logical px (or screen width if smaller).
+            const kPadBreakpoint = 600.0;
+            const kPadMaxWidth = 1080.0;
+            final isPhone = screenWidth < kPadBreakpoint;
+            final maxDisplayWidth =
+                isPhone ? screenWidth : kPadMaxWidth.clamp(0.0, screenWidth);
+            // Cache up to 2× logical px for retina clarity.
+            final memWidth = (maxDisplayWidth * dpr * 2).round();
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: CachedNetworkImage(
-                imageUrl: resolved,
-                fit: BoxFit.contain,
-                placeholder: (_, __) => const SizedBox(height: 1),
-                errorWidget: (_, __, ___) => const SizedBox.shrink(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxDisplayWidth),
+                child: CachedNetworkImage(
+                  imageUrl: resolved,
+                  fit: BoxFit.fitWidth,
+                  width: maxDisplayWidth,
+                  memCacheWidth: memWidth,
+                  placeholder: (_, __) => const SizedBox(height: 1),
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                ),
               ),
             );
           },
@@ -878,7 +904,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
       key: PageStorageKey<String>(
         'repository-readme-scroll-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
       ),
-      controller: _scrollController,
+      primary: true,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,12 +1060,14 @@ class _CodeTab extends StatefulWidget {
     required this.repo,
     required this.defaultBranch,
     required this.branches,
+    required this.tags,
     required this.scrollResetVersion,
   });
   final String owner;
   final String repo;
   final String defaultBranch;
   final List<Map<String, dynamic>> branches;
+  final List<Map<String, dynamic>> tags;
   final int scrollResetVersion;
 
   @override
@@ -1147,67 +1175,87 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
     }
   }
 
-  void _showBranchPicker(BuildContext context) {
+  Future<void> _createNewBranch(String newName, String sourceRef) async {
     final l10n = AppLocalizations.of(context);
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        maxChildSize: 0.9,
-        minChildSize: 0.3,
-        expand: false,
-        builder: (_, controller) => Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 12),
-            Text(l10n.branchesAndTags,
-                style:
-                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-            const SizedBox(height: 8),
-            const Divider(height: 1),
-            Expanded(
-              child: widget.branches.isEmpty
-                  ? Center(child: Text(l10n.loadFailed))
-                  : ListView.builder(
-                      controller: controller,
-                      itemCount: widget.branches.length,
-                      itemBuilder: (_, i) {
-                        final name =
-                            widget.branches[i]['name'] as String? ?? '';
-                        final selected = name == _selectedBranch;
-                        return ListTile(
-                          dense: true,
-                          title: Text(name),
-                          trailing: selected
-                              ? const Icon(Icons.check, color: Colors.green)
-                              : null,
-                          onTap: () {
-                            Navigator.pop(context);
-                            if (name != _selectedBranch) {
-                              setState(() {
-                                _selectedBranch = name;
-                                _pathStack.clear();
-                              });
-                              _loadContents('');
-                            }
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    // Find source branch's commit SHA
+    final sourceBranchInfo = widget.branches.cast<Map<String, dynamic>?>().firstWhere(
+      (b) => b != null && b['name'] == sourceRef,
+      orElse: () => null,
     );
+    final baseSha = sourceBranchInfo?['commit']?['sha'] as String?;
+
+    if (baseSha == null) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text(l10n.createBranchFailed)),
+      );
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+
+    final result = await _api.createBranch(
+      owner: widget.owner,
+      repo: widget.repo,
+      newBranchName: newName,
+      baseSha: baseSha,
+    );
+
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text(l10n.createBranchSuccess)),
+      );
+      // We cannot call _loadBranches() directly as it's in the parent state.
+      // For now, we manually update the local state.
+      widget.branches.insert(0, {
+        'name': newName,
+        'commit': {'sha': baseSha},
+      });
+      setState(() {
+        _selectedBranch = newName;
+        _pathStack.clear();
+      });
+      _loadContents('');
+    } else {
+      setState(() {
+        _loading = false;
+        _error = result.message ?? l10n.createBranchFailed;
+      });
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text(result.message ?? l10n.createBranchFailed)),
+      );
+    }
+  }
+
+  Future<void> _showBranchPicker(BuildContext context) async {
+    final result = await BranchTagPickerBottomSheet.show(
+      context,
+      branches: widget.branches,
+      tags: widget.tags,
+      initialRef: _selectedBranch,
+    );
+
+    if (result != null && mounted) {
+      final name = result.$1;
+      final source = result.$2;
+      final createBranch = result.$3;
+
+      if (createBranch) {
+        await _createNewBranch(name, source);
+      } else if (name != _selectedBranch) {
+        setState(() {
+          _selectedBranch = name;
+          _pathStack.clear();
+        });
+        _loadContents('');
+      }
+    }
   }
 
   @override
@@ -1709,12 +1757,14 @@ class _CommitsTab extends StatefulWidget {
     required this.repo,
     required this.defaultBranch,
     required this.branches,
+    required this.tags,
     required this.scrollResetVersion,
   });
   final String owner;
   final String repo;
   final String defaultBranch;
   final List<Map<String, dynamic>> branches;
+  final List<Map<String, dynamic>> tags;
   final int scrollResetVersion;
 
   @override
@@ -1794,69 +1844,85 @@ class _CommitsTabState extends State<_CommitsTab>
     }
   }
 
-  void _showBranchPicker(BuildContext context) {
+  Future<void> _createNewBranch(String newName, String sourceRef) async {
     final l10n = AppLocalizations.of(context);
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        maxChildSize: 0.9,
-        minChildSize: 0.3,
-        expand: false,
-        builder: (_, controller) => Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 12),
-            Text(l10n.selectBranch,
-                style:
-                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-            const SizedBox(height: 8),
-            const Divider(height: 1),
-            Expanded(
-              child: widget.branches.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      controller: controller,
-                      itemCount: widget.branches.length,
-                      itemBuilder: (_, i) {
-                        final name =
-                            widget.branches[i]['name'] as String? ?? '';
-                        final selected = name == _selectedBranch;
-                        return ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.fork_right, size: 18),
-                          title: Text(name),
-                          trailing: selected
-                              ? const Icon(Icons.check, color: Colors.green)
-                              : null,
-                          onTap: () {
-                            Navigator.pop(context);
-                            if (name != _selectedBranch) {
-                              setState(() {
-                                _selectedBranch = name;
-                                _commits = [];
-                                _page = 1;
-                              });
-                              _load();
-                            }
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    // Find source branch's commit SHA
+    final sourceBranchInfo = widget.branches.cast<Map<String, dynamic>?>().firstWhere(
+      (b) => b != null && b['name'] == sourceRef,
+      orElse: () => null,
     );
+    final baseSha = sourceBranchInfo?['commit']?['sha'] as String?;
+
+    if (baseSha == null) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text(l10n.createBranchFailed)),
+      );
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+
+    final result = await _api.createBranch(
+      owner: widget.owner,
+      repo: widget.repo,
+      newBranchName: newName,
+      baseSha: baseSha,
+    );
+
+    if (!mounted) return;
+
+    if (result.isSuccess) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text(l10n.createBranchSuccess)),
+      );
+      // We'd need to tell parent to reload branches if we want it updated everywhere,
+      // but for now let's just update locally and switch.
+      setState(() {
+        _selectedBranch = newName;
+        _commits = [];
+        _page = 1;
+      });
+      _load();
+    } else {
+      setState(() {
+        _loading = false;
+        _error = result.message ?? l10n.createBranchFailed;
+      });
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text(result.message ?? l10n.createBranchFailed)),
+      );
+    }
+  }
+
+  Future<void> _showBranchPicker(BuildContext context) async {
+    final result = await BranchTagPickerBottomSheet.show(
+      context,
+      branches: widget.branches,
+      tags: widget.tags,
+      initialRef: _selectedBranch,
+    );
+
+    if (result != null && mounted) {
+      final name = result.$1;
+      final source = result.$2;
+      final createBranch = result.$3;
+
+      if (createBranch) {
+        await _createNewBranch(name, source);
+      } else if (name != _selectedBranch) {
+        setState(() {
+          _selectedBranch = name;
+          _commits = [];
+          _page = 1;
+        });
+        _load();
+      }
+    }
   }
 
   @override

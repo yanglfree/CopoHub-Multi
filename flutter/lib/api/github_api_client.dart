@@ -874,6 +874,21 @@ query($login: String!) {
 
   // ── Branches & Tags ───────────────────────────────────────────────────────────────
 
+  Future<ApiResponse<void>> createBranch({
+    required String owner,
+    required String repo,
+    required String newBranchName,
+    required String baseSha,
+  }) async {
+    return _post(
+      '/repos/$owner/$repo/git/refs',
+      data: {
+        'ref': 'refs/heads/$newBranchName',
+        'sha': baseSha,
+      },
+    );
+  }
+
   Future<ApiResponse<List<Map<String, dynamic>>>> getRepositoryBranches(
     String owner,
     String repo, {

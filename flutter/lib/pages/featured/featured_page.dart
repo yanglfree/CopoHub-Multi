@@ -8,6 +8,7 @@ import '../../components/daily/daily_report_view.dart';
 import '../../models/copohub_curated_item.dart';
 import '../../models/deduplicated_repo_item.dart';
 import '../../models/trending_item.dart';
+import '../../services/pro_member_service.dart';
 import '../../utils/constants.dart';
 
 /// "精选" tab page — mirrors HarmonyOS DailyView.
@@ -41,9 +42,16 @@ class _FeaturedPageState extends State<FeaturedPage> {
   bool _reportLoading = false;
   String _reportError = '';
   bool _reportNotFound = false;
+  // Actual date returned by the report API when it differs from _selectedDate
+  // (e.g. today's report uses yesterday's data). Only used for the report tab
+  // header — does NOT affect _selectedDate or trending requests.
+  String? _reportActualDate;
 
   List<DeduplicatedRepoItem> _deduped = [];
   bool _dedupedLoading = false;
+  bool _dedupedLoadingMore = false;
+  bool _dedupedHasMore = false;
+  int _dedupedPage = 1;
   String _dedupedError = '';
   String _dedupedSort = 'total'; // 'total' | 'recent'
   String _dedupedLanguage = '';
@@ -66,28 +74,60 @@ class _FeaturedPageState extends State<FeaturedPage> {
   @override
   void initState() {
     super.initState();
+    ProMemberService.instance.addListener(_onProStatusChanged);
     _loadTrending();
     _loadLanguages();
   }
 
-  Future<void> _loadDeduped({bool force = false}) async {
-    if (_dedupedLoading) return;
+  @override
+  void dispose() {
+    ProMemberService.instance.removeListener(_onProStatusChanged);
+    super.dispose();
+  }
+
+  void _onProStatusChanged() => setState(() {});
+
+  Future<void> _loadDeduped({bool force = false, bool loadMore = false}) async {
+    if (loadMore) {
+      if (_dedupedLoadingMore || !_dedupedHasMore) return;
+    } else {
+      if (_dedupedLoading) return;
+    }
     if (force) {
       await ApiCache.instance.invalidateMatching('/api/v1/trending/deduplicated');
     }
-    setState(() {
-      _dedupedLoading = true;
-      _dedupedError = '';
-    });
+    final page = loadMore ? _dedupedPage + 1 : 1;
+    if (loadMore) {
+      setState(() => _dedupedLoadingMore = true);
+    } else {
+      setState(() {
+        _dedupedLoading = true;
+        _dedupedError = '';
+        if (!loadMore) {
+          _deduped = [];
+          _dedupedPage = 1;
+          _dedupedHasMore = false;
+        }
+      });
+    }
     final result = await _dailyApi.getDeduplicated(
       sort: _dedupedSort,
       language: _dedupedLanguage,
+      page: page,
     );
     if (!mounted) return;
     setState(() {
       _dedupedLoading = false;
+      _dedupedLoadingMore = false;
       if (result.isSuccess) {
-        _deduped = result.data ?? [];
+        final data = result.data!;
+        if (loadMore) {
+          _deduped = [..._deduped, ...data.items];
+        } else {
+          _deduped = data.items;
+        }
+        _dedupedPage = data.page;
+        _dedupedHasMore = data.hasMore;
       } else {
         _dedupedError = result.message ?? '加载失败';
       }
@@ -99,6 +139,14 @@ class _FeaturedPageState extends State<FeaturedPage> {
   // On the daily-report tab (segment 1) the period is always 'daily',
   // regardless of the trending filter selected on segment 0.
   String get _effectiveSince => _segment == 1 ? 'daily' : _since;
+
+  // Date shown in the header. On the report tab, show the report's actual date
+  // (which may be yesterday if today's report isn't ready yet); everywhere else
+  // show the user's selected date so trending/deduped are unaffected.
+  String get _effectiveDisplayDate =>
+      _segment == 1 && _reportActualDate != null
+          ? _reportActualDate!
+          : _selectedDate;
 
   // Normalize date for weekly/monthly API requests.
   // Weekly data is anchored to Monday; monthly to the 1st of the month.
@@ -171,9 +219,10 @@ class _FeaturedPageState extends State<FeaturedPage> {
       _reportLoading = false;
       if (result.isSuccess) {
         _reportNotFound = false;
-        // 更新日期 header 为报告实际日期
+        // Update the report-tab header to the actual report date without
+        // touching _selectedDate (which belongs to the trending tab).
         if (reportDate != null && reportDate.isNotEmpty && isToday) {
-          _selectedDate = reportDate;
+          _reportActualDate = reportDate;
         }
         _report = dailyReportWithRepositoryData(
           result.data!,
@@ -241,6 +290,10 @@ class _FeaturedPageState extends State<FeaturedPage> {
   }
 
   Future<void> _pickDate() async {
+    if (!ProMemberService.instance.isPro) {
+      context.push('/member');
+      return;
+    }
     final today = DateTime.now();
     final current = DateTime.tryParse(_selectedDate) ?? today;
     final DateTime? picked;
@@ -280,10 +333,16 @@ class _FeaturedPageState extends State<FeaturedPage> {
   void _setDate(DateTime date) {
     final nextDate = _formatDate(date);
     if (_selectedDate == nextDate) return;
+    // Paywall: non-pro users can only view today's data.
+    if (!ProMemberService.instance.isPro && nextDate != _todayStr()) {
+      context.push('/member');
+      return;
+    }
     setState(() {
       _selectedDate = nextDate;
       _trending = [];
       _report = null;
+      _reportActualDate = null;
     });
     if (_segment == 0) {
       _loadTrending();
@@ -361,8 +420,9 @@ class _FeaturedPageState extends State<FeaturedPage> {
             Expanded(
               child: _topTab == 0
                   ? _GitHubTab(
-                      date: _selectedDate,
+                      date: _effectiveDisplayDate,
                       segment: _segment,
+                      isPro: ProMemberService.instance.isPro,
                       trending: _trending,
                       trendingLoading: _trendingLoading,
                       trendingError: _trendingError,
@@ -378,6 +438,8 @@ class _FeaturedPageState extends State<FeaturedPage> {
                       dedupedError: _dedupedError,
                       dedupedSort: _dedupedSort,
                       dedupedLanguage: _dedupedLanguage,
+                      dedupedHasMore: _dedupedHasMore,
+                      dedupedLoadingMore: _dedupedLoadingMore,
                       onPrevDate: () => _changeDate(-1),
                       onNextDate: () => _changeDate(1),
                       onPickDate: _pickDate,
@@ -413,6 +475,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
                         _loadDeduped();
                       },
                       onRetryDeduped: () => _loadDeduped(force: true),
+                      onLoadMoreDeduped: () => _loadDeduped(loadMore: true),
                     )
                   : _CopoHubTab(
                       items: _curated,
@@ -520,6 +583,7 @@ class _GitHubTab extends StatelessWidget {
   const _GitHubTab({
     required this.date,
     required this.segment,
+    required this.isPro,
     required this.trending,
     required this.trendingLoading,
     required this.trendingError,
@@ -535,6 +599,8 @@ class _GitHubTab extends StatelessWidget {
     required this.dedupedError,
     required this.dedupedSort,
     required this.dedupedLanguage,
+    required this.dedupedHasMore,
+    required this.dedupedLoadingMore,
     required this.onPrevDate,
     required this.onNextDate,
     required this.onPickDate,
@@ -546,10 +612,12 @@ class _GitHubTab extends StatelessWidget {
     required this.onDedupedSortChanged,
     required this.onDedupedLanguageChanged,
     required this.onRetryDeduped,
+    required this.onLoadMoreDeduped,
   });
 
   final String date;
   final int segment;
+  final bool isPro;
   final List<TrendingItem> trending;
   final bool trendingLoading;
   final String trendingError;
@@ -565,6 +633,8 @@ class _GitHubTab extends StatelessWidget {
   final String dedupedError;
   final String dedupedSort;
   final String dedupedLanguage;
+  final bool dedupedHasMore;
+  final bool dedupedLoadingMore;
   final VoidCallback onPrevDate;
   final VoidCallback onNextDate;
   final VoidCallback onPickDate;
@@ -576,6 +646,7 @@ class _GitHubTab extends StatelessWidget {
   final void Function(String) onDedupedSortChanged;
   final void Function(String) onDedupedLanguageChanged;
   final VoidCallback onRetryDeduped;
+  final VoidCallback onLoadMoreDeduped;
 
   @override
   Widget build(BuildContext context) {
@@ -585,10 +656,12 @@ class _GitHubTab extends StatelessWidget {
           _DatePickerHeader(
             date: date,
             since: since,
+            isPro: isPro,
             onPrev: onPrevDate,
             onNext: onNextDate,
             onTap: onPickDate,
           ),
+        if (!isPro && segment != 2) _ProBanner(onTap: onPickDate),
         _SegmentControl(
           selected: segment,
           onSelect: onSegmentChanged,
@@ -621,9 +694,12 @@ class _GitHubTab extends StatelessWidget {
                       sort: dedupedSort,
                       language: dedupedLanguage,
                       languages: languages,
+                      hasMore: dedupedHasMore,
+                      loadingMore: dedupedLoadingMore,
                       onSortChanged: onDedupedSortChanged,
                       onLanguageChanged: onDedupedLanguageChanged,
                       onRetry: onRetryDeduped,
+                      onLoadMore: onLoadMoreDeduped,
                     ),
         ),
       ],
@@ -637,12 +713,14 @@ class _DatePickerHeader extends StatelessWidget {
   const _DatePickerHeader({
     required this.date,
     required this.since,
+    required this.isPro,
     required this.onPrev,
     required this.onNext,
     required this.onTap,
   });
   final String date;
   final String since;
+  final bool isPro;
   final VoidCallback onPrev;
   final VoidCallback onNext;
   final VoidCallback onTap;
@@ -699,12 +777,20 @@ class _DatePickerHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Non-pro users are locked to the current period; prev is visually locked.
+    final prevLocked = !isPro;
     return Container(
       height: 52,
       color: cs.surfaceContainer,
       child: Row(
         children: [
-          IconButton(icon: const Icon(Icons.chevron_left), onPressed: onPrev),
+          IconButton(
+            icon: Icon(
+              Icons.chevron_left,
+              color: prevLocked ? cs.onSurface.withAlpha(80) : null,
+            ),
+            onPressed: onPrev,
+          ),
           Expanded(
             child: Center(
               child: Material(
@@ -724,8 +810,11 @@ class _DatePickerHeader extends StatelessWidget {
                               fontWeight: FontWeight.w700, fontSize: 15),
                         ),
                         const SizedBox(width: 4),
-                        Icon(Icons.arrow_drop_down,
-                            size: 18, color: cs.onSurfaceVariant),
+                        Icon(
+                          isPro ? Icons.arrow_drop_down : Icons.lock_outline,
+                          size: 18,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ],
                     ),
                   ),
@@ -741,6 +830,49 @@ class _DatePickerHeader extends StatelessWidget {
             onPressed: _isCurrentPeriod() ? null : onNext,
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Pro paywall banner ────────────────────────────────────────────────────────
+
+class _ProBanner extends StatelessWidget {
+  const _ProBanner({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.primaryContainer.withOpacity(0.5),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.lock_outline, size: 15, color: cs.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '历史数据查看需要 Pro 会员',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w500),
+                ),
+              ),
+              Text(
+                '解锁 Pro →',
+                style: TextStyle(
+                    fontSize: 13,
+                    color: cs.primary,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1182,7 +1314,7 @@ class _LangDot extends StatelessWidget {
 
 // ── 高频项目 view ─────────────────────────────────────────────────────────────
 
-class _FrequentView extends StatelessWidget {
+class _FrequentView extends StatefulWidget {
   const _FrequentView({
     required this.items,
     required this.loading,
@@ -1190,9 +1322,12 @@ class _FrequentView extends StatelessWidget {
     required this.sort,
     required this.language,
     required this.languages,
+    required this.hasMore,
+    required this.loadingMore,
     required this.onSortChanged,
     required this.onLanguageChanged,
     required this.onRetry,
+    required this.onLoadMore,
   });
 
   final List<DeduplicatedRepoItem> items;
@@ -1201,12 +1336,42 @@ class _FrequentView extends StatelessWidget {
   final String sort;
   final String language;
   final List<String> languages;
+  final bool hasMore;
+  final bool loadingMore;
   final void Function(String) onSortChanged;
   final void Function(String) onLanguageChanged;
   final VoidCallback onRetry;
+  final VoidCallback onLoadMore;
+
+  @override
+  State<_FrequentView> createState() => _FrequentViewState();
+}
+
+class _FrequentViewState extends State<_FrequentView> {
+  bool _searchVisible = false;
+  final _searchController = TextEditingController();
+  String _searchText = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<DeduplicatedRepoItem> get _filteredItems {
+    if (_searchText.isEmpty) return widget.items;
+    final q = _searchText.toLowerCase();
+    return widget.items.where((item) {
+      return item.fullName.toLowerCase().contains(q) ||
+          item.owner.toLowerCase().contains(q) ||
+          item.description.toLowerCase().contains(q);
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final filtered = _filteredItems;
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         // Filter bar
@@ -1217,46 +1382,148 @@ class _FrequentView extends StatelessWidget {
             children: [
               Expanded(
                 child: _LanguageMenu(
-                  selectedLanguage: language,
-                  languages: languages,
-                  onChanged: onLanguageChanged,
+                  selectedLanguage: widget.language,
+                  languages: widget.languages,
+                  onChanged: widget.onLanguageChanged,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: IconButton(
+                  icon: Icon(
+                    _searchVisible ? Icons.search_off : Icons.search,
+                    size: 20,
+                    color: _searchVisible ? cs.primary : cs.onSurfaceVariant,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _searchVisible = !_searchVisible;
+                      if (!_searchVisible) {
+                        _searchController.clear();
+                        _searchText = '';
+                      }
+                    });
+                  },
+                  tooltip: '搜索仓库',
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+              const SizedBox(width: 4),
               ChoiceChip(
                 label: const Text('累计', style: TextStyle(fontSize: 12)),
-                selected: sort == 'total',
-                onSelected: (_) => onSortChanged('total'),
+                selected: widget.sort == 'total',
+                onSelected: (_) => widget.onSortChanged('total'),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               const SizedBox(width: 4),
               ChoiceChip(
                 label: const Text('最近', style: TextStyle(fontSize: 12)),
-                selected: sort == 'recent',
-                onSelected: (_) => onSortChanged('recent'),
+                selected: widget.sort == 'recent',
+                onSelected: (_) => widget.onSortChanged('recent'),
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
           ),
         ),
+        // Search bar
+        if (_searchVisible)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: '搜索仓库名、作者或描述...',
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searchText.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchText = '';
+                          });
+                        },
+                      )
+                    : null,
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onChanged: (v) => setState(() => _searchText = v),
+            ),
+          ),
         Expanded(
-          child: loading && items.isEmpty
+          child: widget.loading && widget.items.isEmpty
               ? const Center(child: CircularProgressIndicator())
-              : error.isNotEmpty && items.isEmpty
-                  ? _ErrorRetry(message: error, onRetry: onRetry)
-                  : items.isEmpty
-                      ? const _Empty(message: '暂无高频项目数据')
+              : widget.error.isNotEmpty && widget.items.isEmpty
+                  ? _ErrorRetry(message: widget.error, onRetry: widget.onRetry)
+                  : filtered.isEmpty
+                      ? _Empty(
+                          message: _searchText.isNotEmpty
+                              ? '未找到匹配的仓库'
+                              : '暂无高频项目数据',
+                        )
                       : RefreshIndicator(
-                          onRefresh: () async => onRetry(),
-                          child: ListView.separated(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            itemCount: items.length,
-                            separatorBuilder: (_, __) => const Divider(
-                                height: 1, indent: 16, endIndent: 16),
-                            itemBuilder: (context, i) =>
-                                _FrequentCard(item: items[i], rank: i + 1),
+                          onRefresh: () async => widget.onRetry(),
+                          child: NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              if (_searchText.isEmpty &&
+                                  notification is ScrollEndNotification &&
+                                  notification.metrics.pixels >=
+                                      notification.metrics.maxScrollExtent -
+                                          200) {
+                                widget.onLoadMore();
+                              }
+                              return false;
+                            },
+                            child: ListView.separated(
+                              padding:
+                                  const EdgeInsets.only(top: 8, bottom: 24),
+                              itemCount: filtered.length +
+                                  (_searchText.isEmpty &&
+                                          (widget.hasMore ||
+                                              widget.loadingMore)
+                                      ? 1
+                                      : 0),
+                              separatorBuilder: (_, i) =>
+                                  i < filtered.length - 1
+                                      ? const Divider(
+                                          height: 1,
+                                          indent: 16,
+                                          endIndent: 16)
+                                      : const SizedBox.shrink(),
+                              itemBuilder: (context, i) {
+                                if (i >= filtered.length) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 16),
+                                    child: Center(
+                                      child: widget.loadingMore
+                                          ? const SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2),
+                                            )
+                                          : TextButton(
+                                              onPressed: widget.onLoadMore,
+                                              child: const Text('加载更多'),
+                                            ),
+                                    ),
+                                  );
+                                }
+                                return _FrequentCard(
+                                    item: filtered[i], rank: i + 1);
+                              },
+                            ),
                           ),
                         ),
         ),

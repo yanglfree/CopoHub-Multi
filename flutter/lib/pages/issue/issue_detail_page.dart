@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../utils/link_utils.dart';
 
 /// Issue detail page — mirrors HarmonyOS IssueDetailView.
 /// Shows issue body, labels, assignees, and comments thread.
@@ -299,10 +301,7 @@ class _IssueHeader extends StatelessWidget {
             // Body
             if (body.isNotEmpty) ...[
               const Divider(height: 20),
-              SelectableText(
-                body,
-                style: const TextStyle(fontSize: 13, height: 1.5),
-              ),
+              _GithubMarkdown(body: body),
             ],
             // Comment count
             const Divider(height: 20),
@@ -429,8 +428,7 @@ class _CommentTile extends StatelessWidget {
               ),
               if (body.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                SelectableText(body,
-                    style: const TextStyle(fontSize: 13, height: 1.4)),
+                _GithubMarkdown(body: body),
               ],
             ],
           ),
@@ -450,6 +448,86 @@ class _CommentTile extends StatelessWidget {
   }
 
   static String _p(int v) => v.toString().padLeft(2, '0');
+}
+
+// ── Error retry ──────────────────────────────────────────────────────────────
+
+/// Shared GitHub-flavoured Markdown renderer used for issue bodies and comments.
+class _GithubMarkdown extends StatelessWidget {
+  const _GithubMarkdown({required this.body});
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final fg = isDark ? const Color(0xFFe6edf3) : const Color(0xFF24292f);
+    final muted = isDark ? const Color(0xFF8b949e) : const Color(0xFF57606a);
+    final border = isDark ? const Color(0xFF30363d) : const Color(0xFFd0d7de);
+    final codeBg = isDark ? const Color(0x666e7681) : const Color(0x33afb8c1);
+    final preBg = isDark ? const Color(0xFF161b22) : const Color(0xFFf6f8fa);
+    final link = isDark ? const Color(0xFF58a6ff) : const Color(0xFF0969da);
+    final base = MarkdownStyleSheet.fromTheme(theme);
+    final bodyStyle = TextStyle(fontSize: 13, height: 1.5, color: fg);
+    final style = base.copyWith(
+      p: bodyStyle,
+      listBullet: bodyStyle,
+      tableBody: bodyStyle,
+      tableHead: bodyStyle.copyWith(fontWeight: FontWeight.w600),
+      blockquote: bodyStyle.copyWith(color: muted),
+      h1: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: fg, height: 1.3),
+      h2: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: fg, height: 1.3),
+      h3: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: fg, height: 1.35),
+      a: TextStyle(
+        color: link,
+        decoration: TextDecoration.underline,
+        decorationColor: link,
+      ),
+      code: TextStyle(
+        fontSize: 12,
+        fontFamily: 'monospace',
+        backgroundColor: codeBg,
+        color: fg,
+      ),
+      codeblockPadding: const EdgeInsets.all(12),
+      codeblockDecoration: BoxDecoration(
+        color: preBg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      blockquoteDecoration: BoxDecoration(
+        border: Border(left: BorderSide(color: border, width: 4)),
+      ),
+      blockquotePadding: const EdgeInsets.only(left: 12),
+      tableBorder: TableBorder.all(color: border, width: 1),
+      tableCellsPadding:
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: border, width: 1)),
+      ),
+    );
+
+    return MarkdownBody(
+      data: body,
+      selectable: false,
+      styleSheet: style,
+      onTapLink: (text, href, title) {
+        if (href == null || href.isEmpty) return;
+        dispatchLinkAction(context, href);
+      },
+      imageBuilder: (uri, title, alt) {
+        final src = uri.toString();
+        if (src.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Image.network(
+            src,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ── Error retry ───────────────────────────────────────────────────────────────

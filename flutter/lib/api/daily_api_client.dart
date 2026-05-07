@@ -22,6 +22,22 @@ class TrendingListResult {
   });
 }
 
+class DeduplicatedListResult {
+  final List<DeduplicatedRepoItem> items;
+  final int total;
+  final int page;
+  final int limit;
+  final bool hasMore;
+
+  const DeduplicatedListResult({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.limit,
+    required this.hasMore,
+  });
+}
+
 class DailyApiClient {
   static DailyApiClient? _instance;
   static DailyApiClient get instance =>
@@ -117,7 +133,7 @@ class DailyApiClient {
 
   // ── Deduplicated (高频) repositories ─────────────────────────────────────────
 
-  Future<ApiResponse<List<DeduplicatedRepoItem>>> getDeduplicated({
+  Future<ApiResponse<DeduplicatedListResult>> getDeduplicated({
     String sort = 'total',
     String language = '',
     int page = 1,
@@ -134,7 +150,7 @@ class DailyApiClient {
         ApiCache.keyFor('GET', '/api/v1/trending/deduplicated', params);
     final cached = ApiCache.instance.get(cacheKey);
     if (cached != null && cached.isFreshFor(_deduplicatedTtl)) {
-      return ApiResponse.ok(_parseDeduplicated(cached.body));
+      return ApiResponse.ok(_parseDeduplicated(cached.body, page, limit));
     }
 
     try {
@@ -147,19 +163,30 @@ class DailyApiClient {
         CachedEntry(
             etag: null, body: response.data, fetchedAt: DateTime.now()),
       );
-      return ApiResponse.ok(_parseDeduplicated(response.data));
+      return ApiResponse.ok(_parseDeduplicated(response.data, page, limit));
     } on DioException catch (e) {
       return ApiResponse.fail(e.message ?? '网络请求失败');
     }
   }
 
-  List<DeduplicatedRepoItem> _parseDeduplicated(dynamic body) {
+  DeduplicatedListResult _parseDeduplicated(dynamic body, int page, int limit) {
     final map = body as Map<String, dynamic>;
     final dataArray = map['data'] as List<dynamic>? ?? [];
-    return dataArray
+    final pagination = map['pagination'] as Map<String, dynamic>? ?? {};
+    final items = dataArray
         .map((e) =>
             DeduplicatedRepoItem.fromJson(e as Map<String, dynamic>))
         .toList();
+    final total = pagination['total'] as int? ?? items.length;
+    final currentPage = pagination['page'] as int? ?? page;
+    final currentLimit = pagination['limit'] as int? ?? limit;
+    return DeduplicatedListResult(
+      items: items,
+      total: total,
+      page: currentPage,
+      limit: currentLimit,
+      hasMore: currentPage * currentLimit < total,
+    );
   }
 
   // ── Available dates ───────────────────────────────────────────────────────────

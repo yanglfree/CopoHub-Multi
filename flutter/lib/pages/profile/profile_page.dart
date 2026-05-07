@@ -943,21 +943,37 @@ class _StatsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final login = user.login;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          children: [
-            _StatItem(label: l10n.repositories, value: '${user.publicRepos}'),
-            const VerticalDivider(width: 1),
-            _StatItem(label: l10n.followers, value: _fmt(user.followers)),
-            const VerticalDivider(width: 1),
-            _StatItem(label: l10n.following, value: '${user.following}'),
-          ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              _StatItem(
+                label: l10n.repositories,
+                value: '${user.publicRepos}',
+                onTap: () => context.push('/repos/$login'),
+              ),
+              const VerticalDivider(width: 1),
+              _StatItem(
+                label: l10n.followers,
+                value: _fmt(user.followers),
+                onTap: () => context.push('/social/$login/followers'),
+              ),
+              const VerticalDivider(width: 1),
+              _StatItem(
+                label: l10n.following,
+                value: '${user.following}',
+                onTap: () => context.push('/social/$login/following'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -968,23 +984,27 @@ class _StatsBar extends StatelessWidget {
 }
 
 class _StatItem extends StatelessWidget {
-  const _StatItem({required this.label, required this.value});
+  const _StatItem({required this.label, required this.value, this.onTap});
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(value,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 18)),
-              const SizedBox(height: 2),
-              Text(label, style: Theme.of(context).textTheme.bodySmall),
-            ],
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(value,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 18)),
+                const SizedBox(height: 2),
+                Text(label, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
           ),
         ),
       );

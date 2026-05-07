@@ -389,6 +389,11 @@ class _ReportHeader extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(width: 6),
+              _InfoIconButton(
+                color: cs.primary,
+                onTap: () => _showReportInfoDialog(context),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -832,6 +837,97 @@ class _TopicChip extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Info icon button ────────────────────────────────────────────────────────
+
+void _showReportInfoDialog(BuildContext context) {
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('关于每日报告'),
+      content: const Text(
+        '每日报告显示的是前一天的 GitHub Trending 数据。\n\n'
+        '当天的报告将在次日生成，因此今天看到的是昨天的报告，这是正常现象。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('知道了'),
+        ),
+      ],
+    ),
+  );
+}
+
+class _InfoIconButton extends StatelessWidget {
+  const _InfoIconButton({required this.color, required this.onTap});
+
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: CustomPaint(
+          size: const Size(18, 18),
+          painter: _InfoIconPainter(color: color),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoIconPainter extends CustomPainter {
+  const _InfoIconPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final radius = size.width / 2 - 0.8;
+
+    // Circle outline
+    canvas.drawCircle(
+      Offset(cx, cy),
+      radius,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..isAntiAlias = true,
+    );
+
+    // Exclamation mark — vertical line
+    canvas.drawLine(
+      Offset(cx, size.height * 0.25),
+      Offset(cx, size.height * 0.57),
+      Paint()
+        ..color = color
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true,
+    );
+
+    // Exclamation mark — dot
+    canvas.drawCircle(
+      Offset(cx, size.height * 0.72),
+      1.1,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_InfoIconPainter old) => old.color != color;
 }
 
 MarkdownStyleSheet _markdownStyle(BuildContext context) {

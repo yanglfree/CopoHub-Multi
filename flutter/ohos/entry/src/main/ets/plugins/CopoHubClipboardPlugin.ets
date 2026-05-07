@@ -4,7 +4,7 @@ import MethodCall from '@ohos/flutter_ohos/src/main/ets/plugin/common/MethodCall
 import pasteboard from '@ohos.pasteboard';
 import { BusinessError } from '@ohos.base';
 
-const CHANNEL_NAME = 'com.copohub/clipboard';
+const CHANNEL_NAME = 'com.youdroid/clipboard';
 
 export class CopoHubClipboardPlugin implements FlutterPlugin, MethodCallHandler {
   private channel: MethodChannel | null = null;

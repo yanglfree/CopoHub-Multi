@@ -1,4 +1,4 @@
-package com.copohub.copohub
+package com.youdroid.copohub
 
 import io.flutter.embedding.android.FlutterActivity
 

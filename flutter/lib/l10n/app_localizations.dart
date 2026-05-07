@@ -336,10 +336,19 @@ Contact Email: copohub@163.com''';
   String get loadFailed => _zh ? '加载失败' : 'Load failed';
   String get readmeLoadFailed => _zh ? 'README 加载失败' : 'Failed to load README';
 
-  // ── Branch ────────────────────────────────────────────────────────────────
+  // ── Branch & Tag ──────────────────────────────────────────────────────────
   String get branch => _zh ? '分支' : 'Branch';
   String get selectBranch => _zh ? '选择分支' : 'Select branch';
   String get branchesAndTags => _zh ? '分支与标签' : 'Branches & Tags';
+  String get switchBranchOrTag => _zh ? '切换分支/标签' : 'Switch branches/tags';
+  String get searchOrCreateBranch => _zh ? '搜索或创建新分支' : 'Search or create a new branch';
+  String get branches => _zh ? '分支' : 'Branches';
+  String get tags => _zh ? '标签' : 'Tags';
+  String get createBranch => _zh ? '新建分支' : 'Create branch';
+  String get createBranchFailed => _zh ? '新建分支失败' : 'Failed to create branch';
+  String get createBranchSuccess => _zh ? '新建分支成功' : 'Branch created successfully';
+  String get source => _zh ? '源自' : 'Source';
+  String get sourceBranch => _zh ? '源分支' : 'Source branch';
 
   // ── Code tab ──────────────────────────────────────────────────────────────
   String get root => _zh ? '根目录' : 'Root';

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
+import '../../services/iap_service.dart';
 import '../../services/pro_member_service.dart';
-import '../../components/dialogs/app_dialog.dart';
 import '../../components/policy/policy_dialog.dart';
 
-/// Pro membership paywall — mirrors HarmonyOS MemberGatePage.
+/// Pro membership paywall.
 ///
-/// Shows benefit list + plan selector. The actual IAP integration is
-/// deferred; the "订阅" button shows a coming-soon dialog.
+/// Loads live prices from the platform store (iOS StoreKit / HarmonyOS IAPKit)
+/// via [IapService] and handles the full purchase and restore flow.
 class MemberGatePage extends StatefulWidget {
   const MemberGatePage({super.key});
 
@@ -16,9 +16,14 @@ class MemberGatePage extends StatefulWidget {
 
 class _MemberGatePageState extends State<MemberGatePage> {
   final _proService = ProMemberService.instance;
+  final _iapService = IapService.instance;
 
   int _selectedPlanIndex = 1; // Default: yearly
   bool _agreed = false;
+  bool _loading = false;
+
+  // productId → localised price string (populated after queryProducts).
+  final Map<String, String> _livePrices = {};
 
   static const _plans = [
     _Plan(
@@ -72,34 +77,89 @@ class _MemberGatePageState extends State<MemberGatePage> {
     ),
   ];
 
-  void _subscribe() {
+  static const _planTypes = [
+    ProPlanType.monthly,
+    ProPlanType.yearly,
+    ProPlanType.lifetime,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrices();
+  }
+
+  Future<void> _loadPrices() async {
+    try {
+      final products = await _iapService.queryProducts();
+      if (!mounted) return;
+      setState(() {
+        for (final p in products) {
+          _livePrices[p.planType.name] = p.localPrice;
+        }
+      });
+    } catch (_) {
+      // Fall back to hard-coded prices silently.
+    }
+  }
+
+  String _displayPrice(_Plan plan) {
+    final live = _livePrices[plan.id];
+    return live != null && live.isNotEmpty ? live : plan.price;
+  }
+
+  Future<void> _subscribe() async {
     if (!_agreed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先同意隐私条款和服务协议')),
       );
       return;
     }
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AppDialog(
-        title: '购买功能',
-        icon: Icons.workspace_premium_outlined,
-        actions: [
-          AppDialogAction(
-            label: '好的',
-            isPrimary: true,
-            onPressed: () => Navigator.pop(dialogContext),
-          ),
-        ],
-        child: Text(
-          '应用内购买功能即将推出，敬请期待！',
-          style: Theme.of(dialogContext).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
+    if (_loading) return;
+
+    setState(() => _loading = true);
+    try {
+      final planType = _planTypes[_selectedPlanIndex];
+      await _iapService.purchase(planType);
+      if (!mounted) return;
+      setState(() {}); // Refresh to show member view.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('🎉 Pro 会员已激活！')),
+      );
+    } on IapException catch (e) {
+      if (!mounted) return;
+      final msg = switch (e.code) {
+        'USER_CANCELLED' => '已取消',
+        'PAYMENTS_DISABLED' => '设备已禁用应用内购买',
+        _ => '购买失败（${e.code}），请稍后重试',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _restore() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final restored = await _iapService.restorePurchases();
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text(restored ? '购买记录已恢复' : '未找到购买记录，请尝试直接点击订阅按钮恢复'),
         ),
-      ),
-    );
+      );
+    } on IapException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('恢复失败（${e.code}），请稍后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -219,7 +279,7 @@ class _MemberGatePageState extends State<MemberGatePage> {
             ),
           ),
 
-          // Benefits
+          // Benefits + plans
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
             child: Column(
@@ -250,6 +310,7 @@ class _MemberGatePageState extends State<MemberGatePage> {
                       child: _PlanCard(
                         plan: entry.value,
                         selected: _selectedPlanIndex == entry.key,
+                        displayPrice: _displayPrice(entry.value),
                         onTap: () =>
                             setState(() => _selectedPlanIndex = entry.key),
                       ),
@@ -320,17 +381,26 @@ class _MemberGatePageState extends State<MemberGatePage> {
                   width: double.infinity,
                   height: 48,
                   child: FilledButton(
-                    onPressed: _subscribe,
+                    onPressed: _loading ? null : _subscribe,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF1A237E),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: Text(
-                      '订阅 ${_plans[_selectedPlanIndex].name}',
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
+                    child: _loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            '订阅 ${_plans[_selectedPlanIndex].name}',
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w700),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -338,6 +408,19 @@ class _MemberGatePageState extends State<MemberGatePage> {
                   child: Text(
                     '随时可取消 · 安全支付',
                     style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Restore button
+                Center(
+                  child: TextButton(
+                    onPressed: _loading ? null : _restore,
+                    child: Text(
+                      '恢复购买',
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurfaceVariant),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -375,9 +458,13 @@ class _Plan {
 
 class _PlanCard extends StatelessWidget {
   const _PlanCard(
-      {required this.plan, required this.selected, required this.onTap});
+      {required this.plan,
+      required this.selected,
+      required this.displayPrice,
+      required this.onTap});
   final _Plan plan;
   final bool selected;
+  final String displayPrice;
   final VoidCallback onTap;
 
   @override
@@ -475,7 +562,7 @@ class _PlanCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      plan.price,
+                      displayPrice,
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
