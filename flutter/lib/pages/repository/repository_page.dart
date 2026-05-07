@@ -1490,6 +1490,8 @@ class _IssuesTabState extends State<_IssuesTab>
   int _page = 1;
   // 'all' | 'open' | 'closed'
   String _state = 'open';
+  // 'all' | 'issues' | 'pulls'
+  String _typeFilter = 'all';
   String _error = '';
 
   @override
@@ -1524,13 +1526,25 @@ class _IssuesTabState extends State<_IssuesTab>
       _error = '';
     });
 
-    final result = await _api.getRepositoryIssues(
-      widget.owner,
-      widget.repo,
-      state: _state == 'all' ? 'all' : _state,
-      page: _page,
-      perPage: 30,
-    );
+    final dynamic result;
+    if (_typeFilter == 'pulls') {
+      result = await _api.getRepositoryPullRequests(
+        widget.owner,
+        widget.repo,
+        state: _state == 'all' ? 'all' : _state,
+        page: _page,
+        perPage: 30,
+      );
+    } else {
+      result = await _api.getRepositoryIssues(
+        widget.owner,
+        widget.repo,
+        state: _state == 'all' ? 'all' : _state,
+        page: _page,
+        perPage: 30,
+        type: _typeFilter == 'issues' ? 'issue' : null,
+      );
+    }
 
     if (!mounted) return;
 
@@ -1564,6 +1578,16 @@ class _IssuesTabState extends State<_IssuesTab>
     _load();
   }
 
+  void _switchType(String t) {
+    if (t == _typeFilter) return;
+    setState(() {
+      _typeFilter = t;
+      _issues = [];
+      _page = 1;
+    });
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -1571,7 +1595,32 @@ class _IssuesTabState extends State<_IssuesTab>
 
     return Column(
       children: [
-        // ── Filter chips — tight padding so there's no gap to the list ────
+        // ── Type filter chips ──────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+          child: Row(
+            children: [
+              _FilterChip(
+                label: l10n.filterAll,
+                selected: _typeFilter == 'all',
+                onTap: () => _switchType('all'),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Issues',
+                selected: _typeFilter == 'issues',
+                onTap: () => _switchType('issues'),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'PRs',
+                selected: _typeFilter == 'pulls',
+                onTap: () => _switchType('pulls'),
+              ),
+            ],
+          ),
+        ),
+        // ── State filter chips ────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           child: Row(
@@ -1628,8 +1677,15 @@ class _IssuesTabState extends State<_IssuesTab>
                                   onTap: () {
                                     final number = _issues[i]['number'] as int?;
                                     if (number != null) {
-                                      context.push(
-                                          '/issue/${widget.owner}/${widget.repo}/$number');
+                                      final isPr = _issues[i]['pull_request'] != null ||
+                                          _typeFilter == 'pulls';
+                                      if (isPr) {
+                                        context.push(
+                                            '/pr/${widget.owner}/${widget.repo}/$number');
+                                      } else {
+                                        context.push(
+                                            '/issue/${widget.owner}/${widget.repo}/$number');
+                                      }
                                     }
                                   });
                             },

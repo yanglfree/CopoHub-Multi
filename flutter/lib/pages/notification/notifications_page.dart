@@ -135,7 +135,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         if (num != null) context.push('/issue/$owner/$repo/$num');
       case 'PullRequest':
         final num = _extractNumber(n.subject.url);
-        if (num != null) context.push('/issue/$owner/$repo/$num');
+        if (num != null) context.push('/pr/$owner/$repo/$num');
       default:
         context.push('/repository/$owner/$repo');
     }

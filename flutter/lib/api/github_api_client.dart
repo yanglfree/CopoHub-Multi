@@ -813,6 +813,8 @@ query($login: String!) {
     String direction = 'desc',
     int page = 1,
     int perPage = 30,
+    // Pass 'issue' to exclude pull requests from the result.
+    String? type,
   }) {
     final params = <String, dynamic>{
       'state': state,
@@ -822,6 +824,7 @@ query($login: String!) {
       'per_page': perPage,
     };
     if (labels != null) params['labels'] = labels;
+    if (type != null) params['type'] = type;
 
     return _get<List<Map<String, dynamic>>>(
       '/repos/$owner/$repo/issues',
@@ -837,6 +840,120 @@ query($login: String!) {
         '/repos/$owner/$repo/issues/$issueNumber',
         parser: (d) => d as Map<String, dynamic>,
       );
+
+  // ── Pull Requests ─────────────────────────────────────────────────────────────────
+
+  Future<ApiResponse<List<Map<String, dynamic>>>> getRepositoryPullRequests(
+    String owner,
+    String repo, {
+    String state = 'open',
+    String sort = 'created',
+    String direction = 'desc',
+    int page = 1,
+    int perPage = 30,
+  }) =>
+      _get<List<Map<String, dynamic>>>(
+        '/repos/$owner/$repo/pulls',
+        params: {
+          'state': state,
+          'sort': sort,
+          'direction': direction,
+          'page': page,
+          'per_page': perPage,
+        },
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
+      );
+
+  Future<ApiResponse<Map<String, dynamic>>> getPullRequest(
+          String owner, String repo, int pullNumber) =>
+      _get<Map<String, dynamic>>(
+        '/repos/$owner/$repo/pulls/$pullNumber',
+        parser: (d) => d as Map<String, dynamic>,
+      );
+
+  Future<ApiResponse<List<Map<String, dynamic>>>> getPullRequestReviews(
+    String owner,
+    String repo,
+    int pullNumber,
+  ) =>
+      _get<List<Map<String, dynamic>>>(
+        '/repos/$owner/$repo/pulls/$pullNumber/reviews',
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
+      );
+
+  Future<ApiResponse<List<Map<String, dynamic>>>> getPullRequestFiles(
+    String owner,
+    String repo,
+    int pullNumber, {
+    int page = 1,
+    int perPage = 30,
+  }) =>
+      _get<List<Map<String, dynamic>>>(
+        '/repos/$owner/$repo/pulls/$pullNumber/files',
+        params: {'page': page, 'per_page': perPage},
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
+      );
+
+  Future<ApiResponse<List<Map<String, dynamic>>>> getPullRequestComments(
+    String owner,
+    String repo,
+    int pullNumber, {
+    int page = 1,
+    int perPage = 30,
+  }) =>
+      _get<List<Map<String, dynamic>>>(
+        '/repos/$owner/$repo/issues/$pullNumber/comments',
+        params: {
+          'page': page,
+          'per_page': perPage,
+          'sort': 'created',
+          'direction': 'asc',
+        },
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
+      );
+
+  Future<ApiResponse<Map<String, dynamic>>> mergePullRequest(
+    String owner,
+    String repo,
+    int pullNumber, {
+    String mergeMethod = 'merge',
+    String? commitTitle,
+    String? commitMessage,
+  }) async {
+    final data = <String, dynamic>{'merge_method': mergeMethod};
+    if (commitTitle != null) data['commit_title'] = commitTitle;
+    if (commitMessage != null) data['commit_message'] = commitMessage;
+    try {
+      final response = await _dio.put<dynamic>(
+        '/repos/$owner/$repo/pulls/$pullNumber/merge',
+        data: data,
+      );
+      return ApiResponse.ok(response.data as Map<String, dynamic>? ?? {});
+    } on DioException catch (e) {
+      return _handleDioError(e);
+    }
+  }
+
+  Future<ApiResponse<Map<String, dynamic>>> updatePullRequestState(
+    String owner,
+    String repo,
+    int pullNumber, {
+    required String state, // 'open' | 'closed'
+  }) async {
+    try {
+      final response = await _dio.patch<dynamic>(
+        '/repos/$owner/$repo/pulls/$pullNumber',
+        data: {'state': state},
+      );
+      return ApiResponse.ok(response.data as Map<String, dynamic>? ?? {});
+    } on DioException catch (e) {
+      return _handleDioError(e);
+    }
+  }
 
   Future<ApiResponse<List<Map<String, dynamic>>>> getIssueComments(
     String owner,
