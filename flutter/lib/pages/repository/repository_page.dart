@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 import '../../api/github_api_client.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/repository.dart';
 import '../../services/share_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/link_utils.dart';
 
 /// Repository detail page — README / 代码 / Issues / Commits / Releases tabs.
 class RepositoryPage extends StatefulWidget {
@@ -570,15 +570,13 @@ class _ReadmeTab extends StatefulWidget {
 class _ReadmeTabState extends State<_ReadmeTab>
     with AutomaticKeepAliveClientMixin {
   final _api = GitHubApiClient.instance;
-  late final WebViewController _webViewController;
+  final _scrollController = ScrollController();
   String _readmePath = 'README.md';
   String _downloadUrl = '';
   String _htmlUrl = '';
   bool _loading = true;
   bool _hasError = false;
-  bool _readmeHtmlLoaded = false;
-  String? _cachedMarkdown;
-  double? _contentHeight;
+  String? _markdown;
 
   @override
   bool get wantKeepAlive => true;
@@ -586,49 +584,13 @@ class _ReadmeTabState extends State<_ReadmeTab>
   @override
   void initState() {
     super.initState();
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.transparent)
-      ..addJavaScriptChannel(
-        'FlutterReadmeHeight',
-        onMessageReceived: (message) {
-          final h = double.tryParse(message.message);
-          if (h == null || !mounted) return;
-          if (_contentHeight != null && (_contentHeight! - h).abs() < 1) {
-            return;
-          }
-          setState(() => _contentHeight = h);
-        },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            final url = request.url;
-            if (url == 'about:blank' || url.startsWith('data:')) {
-              return NavigationDecision.navigate;
-            }
-            if (!request.isMainFrame) {
-              return NavigationDecision.navigate;
-            }
-            if (!_readmeHtmlLoaded) {
-              return NavigationDecision.prevent;
-            }
-            final uri = Uri.tryParse(url);
-            if (uri != null &&
-                (uri.scheme == 'http' ||
-                    uri.scheme == 'https' ||
-                    uri.scheme == 'mailto')) {
-              launchUrl(uri, mode: LaunchMode.externalApplication);
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.prevent;
-          },
-          onPageFinished: (_) {
-            _readmeHtmlLoaded = true;
-          },
-        ),
-      );
     _loadReadme();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -637,20 +599,13 @@ class _ReadmeTabState extends State<_ReadmeTab>
     if (oldWidget.owner != widget.owner ||
         oldWidget.repo != widget.repo ||
         oldWidget.defaultBranch != widget.defaultBranch) {
-      _cachedMarkdown = null;
       _loadReadme();
-      return;
-    }
-    if (oldWidget.isDark != widget.isDark && _cachedMarkdown != null) {
-      _renderReadme(_cachedMarkdown!);
       return;
     }
     if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final controller = PrimaryScrollController.maybeOf(context);
-      if (controller == null || !controller.hasClients) return;
-      controller.jumpTo(0);
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(0);
     });
   }
 
@@ -658,11 +613,10 @@ class _ReadmeTabState extends State<_ReadmeTab>
     setState(() {
       _loading = true;
       _hasError = false;
-      _readmeHtmlLoaded = false;
+      _markdown = null;
       _readmePath = 'README.md';
       _downloadUrl = '';
       _htmlUrl = '';
-      _contentHeight = null;
     });
 
     final result = await _api.getRepositoryReadme(
@@ -678,58 +632,174 @@ class _ReadmeTabState extends State<_ReadmeTab>
       final encoding = (data?['encoding'] as String? ?? 'base64').toLowerCase();
       final text = _decodeReadmeContent(encoded, encoding);
       if (text != null && text.trim().isNotEmpty) {
-        _readmePath = data?['path'] as String? ?? 'README.md';
-        _downloadUrl = data?['download_url'] as String? ?? '';
-        _htmlUrl = data?['html_url'] as String? ?? '';
-        _cachedMarkdown = text;
-        await _renderReadme(text);
-        if (!mounted) return;
-        if (!_hasError) return;
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _loading = false;
-        _hasError = true;
-      });
-    }
-  }
-
-  Future<void> _renderReadme(String markdown) async {
-    try {
-      final result = await _api.renderMarkdown(
-        markdown,
-        mode: 'gfm',
-        context: '${widget.owner}/${widget.repo}',
-      );
-      if (!mounted) return;
-
-      if (!result.isSuccess || result.data == null || result.data!.isEmpty) {
         setState(() {
+          _readmePath = data?['path'] as String? ?? 'README.md';
+          _downloadUrl = data?['download_url'] as String? ?? '';
+          _htmlUrl = data?['html_url'] as String? ?? '';
+          _markdown = _stripHtmlForMarkdown(text);
           _loading = false;
-          _hasError = true;
+          _hasError = false;
         });
         return;
       }
-
-      final html =
-          _buildHtmlDocument(_rewriteRenderedHtml(_sanitizeHtml(result.data!)));
-      _readmeHtmlLoaded = false;
-      _contentHeight = null;
-      await _webViewController.loadHtmlString(html);
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _hasError = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _hasError = true;
-      });
     }
+
+    setState(() {
+      _loading = false;
+      _hasError = true;
+    });
+  }
+
+  /// Preprocess raw GitHub README markdown:
+  /// - Converts common HTML tags to markdown equivalents (bold, italic, links, images)
+  /// - Strips remaining HTML so flutter_markdown doesn't show raw angle-bracket tags
+  String _stripHtmlForMarkdown(String src) {
+    var s = src;
+
+    // 1. Drop HTML comments first so they don't interfere with later regexes.
+    s = s.replaceAll(RegExp(r'<!--[\s\S]*?-->', caseSensitive: false), '');
+
+    // 2. Erase opaque blocks entirely (script/style/svg/iframe content).
+    s = s.replaceAllMapped(
+      RegExp(
+        r'<(script|style|iframe|svg|video|audio|object)\b[^>]*?>[\s\S]*?</\1>',
+        caseSensitive: false,
+      ),
+      (_) => '',
+    );
+
+    // 3. Convert <pre><code>…</code></pre> → fenced code block.
+    s = s.replaceAllMapped(
+      RegExp(
+        r'<pre\b[^>]*?>\s*<code\b[^>]*?>([\s\S]*?)</code>\s*</pre>',
+        caseSensitive: false,
+      ),
+      (m) => '\n```\n${_unescapeHtmlEntities(m.group(1)!)}\n```\n',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'<pre\b[^>]*?>([\s\S]*?)</pre>', caseSensitive: false),
+      (m) => '\n```\n${_unescapeHtmlEntities(m.group(1)!)}\n```\n',
+    );
+
+    // 4. Convert <img> → markdown image ![]().
+    s = s.replaceAllMapped(
+      RegExp(
+        r'''<img\b[^>]*?\bsrc\s*=\s*(["'])([^"']*)\1[^>]*?/?>''',
+        caseSensitive: false,
+      ),
+      (m) {
+        final src = m.group(2) ?? '';
+        final raw = m.group(0)!;
+        final altM = RegExp(
+          r'''\balt\s*=\s*(["'])([^"']*)\1''',
+          caseSensitive: false,
+        ).firstMatch(raw);
+        return '![${altM?.group(2) ?? ''}]($src)';
+      },
+    );
+
+    // 5. Convert <a href="…">text</a> → [text](href).
+    s = s.replaceAllMapped(
+      RegExp(
+        r'''<a\b[^>]*?\bhref\s*=\s*(["'])([^"']*)\1[^>]*?>([\s\S]*?)</a>''',
+        caseSensitive: false,
+      ),
+      (m) {
+        final href = _unescapeHtmlEntities(m.group(2) ?? '');
+        final text = _unescapeHtmlEntities(
+          (m.group(3) ?? '').replaceAll(RegExp(r'<[^>]+>'), '').trim(),
+        );
+        return text.isEmpty ? '' : '[$text]($href)';
+      },
+    );
+
+    // 6. Convert inline formatting HTML → markdown equivalents.
+    s = s.replaceAllMapped(
+      RegExp(r'<(b|strong)\b[^>]*?>([\s\S]*?)</(b|strong)>', caseSensitive: false),
+      (m) => '**${m.group(2)}**',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'<(i|em)\b[^>]*?>([\s\S]*?)</(i|em)>', caseSensitive: false),
+      (m) => '_${m.group(2)}_',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'<(del|s|strike)\b[^>]*?>([\s\S]*?)</(del|s|strike)>', caseSensitive: false),
+      (m) => '~~${m.group(2)}~~',
+    );
+    s = s.replaceAllMapped(
+      RegExp(r'<code\b[^>]*?>([\s\S]*?)</code>', caseSensitive: false),
+      (m) => '`${_unescapeHtmlEntities(m.group(1)!)}`',
+    );
+
+    // 7. Convert <br> to newline.
+    s = s.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+
+    // 8. Strip remaining HTML container/block tags, keeping their inner text.
+    s = s.replaceAll(
+      RegExp(
+        r'</?(?:div|span|p|section|article|header|footer|nav|main|aside|center'
+        r'|details|summary|table|thead|tbody|tr|td|th|font|small|big|sub|sup'
+        r'|kbd|mark|figure|figcaption|picture|source|h[1-6])\b[^>]*?>',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    // 9. Drop standalone void/self-closing tags we have no markdown mapping for.
+    s = s.replaceAll(
+      RegExp(
+        r'<(?:input|meta|link|embed)\b[^>]*?/?>',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    // 10. Remove leading whitespace from image lines so they are not
+    // misinterpreted as indented code blocks (4-space rule) by the parser.
+    s = s.replaceAllMapped(
+      RegExp(r'^[^\S\n]+(![\[\(])', multiLine: true),
+      (m) => m.group(1)!,
+    );
+
+    // 11. Unescape remaining HTML entities in the full text.
+    s = _unescapeHtmlEntities(s);
+
+    return s;
+  }
+
+  String _unescapeHtmlEntities(String s) => s
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      // Match &nbsp; with or without the trailing semicolon (some READMEs omit it).
+      .replaceAll(RegExp(r'&nbsp;?'), '\u00a0');
+
+  /// Splits [text] into sections so that markdown table blocks (lines whose
+  /// first non-space character is `|`) can be rendered inside a horizontal
+  /// scroll container, while normal prose/code sections use full width.
+  List<({bool isTable, String content})> _splitByTables(String text) {
+    final sections = <({bool isTable, String content})>[];
+    final buf = StringBuffer();
+    bool inTable = false;
+
+    void flush() {
+      final s = buf.toString();
+      if (s.trim().isNotEmpty) sections.add((isTable: inTable, content: s));
+      buf.clear();
+    }
+
+    for (final line in text.split('\n')) {
+      final tableRow = line.trimLeft().startsWith('|');
+      if (tableRow != inTable) {
+        flush();
+        inTable = tableRow;
+      }
+      buf.writeln(line);
+    }
+    flush();
+    return sections;
   }
 
   String? _decodeReadmeContent(String content, String encoding) {
@@ -746,9 +816,10 @@ class _ReadmeTabState extends State<_ReadmeTab>
   Widget build(BuildContext context) {
     super.build(context);
     final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
 
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_hasError) {
+    if (_hasError || _markdown == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -760,201 +831,126 @@ class _ReadmeTabState extends State<_ReadmeTab>
         ),
       );
     }
-    final viewportHeight = MediaQuery.of(context).size.height;
-    final height = _contentHeight ?? viewportHeight;
+
+    final sections = _splitByTables(_markdown!);
+    final normalStyle = _readmeStyleSheet(theme, widget.isDark);
+    final tableStyle = normalStyle.copyWith(
+      // IntrinsicColumnWidth lets each column expand to its content width so
+      // the table can scroll horizontally without squishing text into narrow
+      // columns (the FlexColumnWidth default distributes fixed total width).
+      tableColumnWidth: const IntrinsicColumnWidth(),
+    );
+
+    Widget buildMarkdown(String data, MarkdownStyleSheet style) => MarkdownBody(
+          data: data,
+          // selectable:true wraps content in SelectionArea which swallows
+          // TapGestureRecognizer events — links become unclickable.
+          selectable: false,
+          styleSheet: style,
+          onTapLink: (text, href, title) {
+            if (href == null || href.isEmpty) return;
+            final resolved = _resolveReadmeUrl(href, forImage: false);
+            dispatchLinkAction(context, resolved);
+          },
+          imageBuilder: (uri, title, alt) {
+            final resolved = _resolveReadmeUrl(uri.toString(), forImage: true);
+            if (resolved.isEmpty || resolved == 'about:blank') {
+              return const SizedBox.shrink();
+            }
+            if (resolved.endsWith('.svg') ||
+                resolved.contains('badge') ||
+                resolved.contains('shields.io')) {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: CachedNetworkImage(
+                imageUrl: resolved,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const SizedBox(height: 1),
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            );
+          },
+        );
+
     return SingleChildScrollView(
       key: PageStorageKey<String>(
         'repository-readme-scroll-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
       ),
-      child: SizedBox(
-        height: height,
-        child: WebViewWidget(
-          controller: _webViewController,
-        ),
+      controller: _scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final section in sections)
+            if (section.isTable)
+              // Wrap each table in its own horizontal scroll so wide tables
+              // don't force text to wrap into unreadably narrow columns.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: buildMarkdown(section.content, tableStyle),
+              )
+            else
+              buildMarkdown(section.content, normalStyle),
+        ],
       ),
     );
   }
 
-  String _sanitizeHtml(String html) {
-    return html
-        .replaceAll(
-            RegExp(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>',
-                caseSensitive: false),
-            '')
-        .replaceAll(
-            RegExp(r'''\son[a-z]+\s*=\s*(['"]).*?\1''', caseSensitive: false),
-            '')
-        .replaceAll(RegExp(r'\sjavascript:', caseSensitive: false), '');
-  }
-
-  String _rewriteRenderedHtml(String html) {
-    var result = html.replaceAllMapped(
-      RegExp(r'''\b(src|href)\s*=\s*(['"])([^'"]*)(['"])''',
-          caseSensitive: false),
-      (match) {
-        final attr = match.group(1)!.toLowerCase();
-        final quote = match.group(2)!;
-        final value = match.group(3)!;
-        final resolved = _resolveReadmeUrl(value, forImage: attr == 'src');
-        return '$attr=$quote${_escapeHtmlAttribute(resolved)}$quote';
-      },
+  MarkdownStyleSheet _readmeStyleSheet(ThemeData theme, bool isDark) {
+    final base = MarkdownStyleSheet.fromTheme(theme);
+    final fg = isDark ? const Color(0xFFe6edf3) : const Color(0xFF24292f);
+    final muted = isDark ? const Color(0xFF8b949e) : const Color(0xFF57606a);
+    final border = isDark ? const Color(0xFF30363d) : const Color(0xFFd0d7de);
+    final codeBg = isDark
+        ? const Color(0x666e7681)
+        : const Color(0x33afb8c1);
+    final preBg = isDark ? const Color(0xFF161b22) : const Color(0xFFf6f8fa);
+    final link = isDark ? const Color(0xFF58a6ff) : const Color(0xFF0969da);
+    final body = TextStyle(fontSize: 15, height: 1.6, color: fg);
+    return base.copyWith(
+      p: body,
+      listBullet: body,
+      tableBody: body,
+      tableHead: body.copyWith(fontWeight: FontWeight.w600),
+      blockquote: body.copyWith(color: muted),
+      h1: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: fg, height: 1.3),
+      h2: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: fg, height: 1.3),
+      h3: TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: fg, height: 1.35),
+      h4: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: fg, height: 1.4),
+      h5: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: fg, height: 1.4),
+      h6: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: muted, height: 1.4),
+      h1Padding: const EdgeInsets.only(top: 16, bottom: 6),
+      h2Padding: const EdgeInsets.only(top: 16, bottom: 6),
+      h3Padding: const EdgeInsets.only(top: 12, bottom: 4),
+      a: TextStyle(
+        color: link,
+        decoration: TextDecoration.underline,
+        decorationColor: link,
+      ),
+      code: TextStyle(
+        fontSize: 13,
+        fontFamily: 'monospace',
+        backgroundColor: codeBg,
+        color: fg,
+      ),
+      codeblockPadding: const EdgeInsets.all(12),
+      codeblockDecoration: BoxDecoration(
+        color: preBg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      blockquoteDecoration: BoxDecoration(
+        border: Border(left: BorderSide(color: border, width: 4)),
+      ),
+      blockquotePadding: const EdgeInsets.only(left: 12),
+      tableBorder: TableBorder.all(color: border, width: 1),
+      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: border, width: 1)),
+      ),
     );
-
-    result = result.replaceAllMapped(
-      RegExp(r'''\bsrcset\s*=\s*(['"])([^'"]*)(['"])''', caseSensitive: false),
-      (match) {
-        final quote = match.group(1)!;
-        final value = match.group(2)!;
-        final resolved = value.split(',').map((candidate) {
-          final trimmed = candidate.trim();
-          if (trimmed.isEmpty) return trimmed;
-          final parts = trimmed.split(RegExp(r'\s+'));
-          parts[0] = _resolveReadmeUrl(parts[0], forImage: true);
-          return parts.join(' ');
-        }).join(', ');
-        return 'srcset=$quote${_escapeHtmlAttribute(resolved)}$quote';
-      },
-    );
-
-    return result;
-  }
-
-  String _buildHtmlDocument(String bodyHtml) {
-    final isDark = widget.isDark;
-    final bg = isDark ? '#0d1117' : '#ffffff';
-    final fg = isDark ? '#e6edf3' : '#24292f';
-    final muted = isDark ? '#8b949e' : '#57606a';
-    final border = isDark ? '#30363d' : '#d0d7de';
-    final codeBg =
-        isDark ? 'rgba(110, 118, 129, 0.4)' : 'rgba(175, 184, 193, 0.2)';
-    final preBg = isDark ? '#161b22' : '#f6f8fa';
-    final link = isDark ? '#58a6ff' : '#0969da';
-    return '''
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3">
-  <style>
-    :root {
-      --bg: $bg;
-      --fg: $fg;
-      --muted: $muted;
-      --border: $border;
-      --code-bg: $codeBg;
-      --pre-bg: $preBg;
-      --link: $link;
-    }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: auto;
-      background: var(--bg);
-      color: var(--fg);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 15px;
-      line-height: 1.55;
-      overflow: visible;
-    }
-    body {
-      padding: 16px 24px 28px;
-      overflow-x: hidden;
-      overflow-wrap: break-word;
-    }
-    a { color: var(--link); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    h1, h2 {
-      padding-bottom: .3em;
-      border-bottom: 1px solid var(--border);
-    }
-    h1 { font-size: 2em; }
-    h2 { font-size: 1.5em; }
-    h3 { font-size: 1.25em; }
-    h4 { font-size: 1em; }
-    h5 { font-size: .875em; }
-    h6 { font-size: .85em; color: var(--muted); }
-    img { max-width: 100%; height: auto; }
-    code {
-      padding: .2em .4em;
-      border-radius: 6px;
-      background: var(--code-bg);
-      font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Consolas, monospace;
-      font-size: 85%;
-    }
-    pre {
-      padding: 16px;
-      overflow: auto;
-      border-radius: 6px;
-      background: var(--pre-bg);
-    }
-    pre code { padding: 0; background: transparent; }
-    blockquote {
-      margin: 0;
-      padding: 0 1em;
-      color: var(--muted);
-      border-left: .25em solid var(--border);
-    }
-    table {
-      display: block;
-      width: max-content;
-      max-width: 100%;
-      overflow: auto;
-      border-spacing: 0;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 6px 13px;
-      border: 1px solid var(--border);
-    }
-    hr {
-      height: .25em;
-      padding: 0;
-      margin: 24px 0;
-      background-color: var(--border);
-      border: 0;
-    }
-  </style>
-</head>
-<body>
-  <main class="markdown-body">
-    $bodyHtml
-  </main>
-  <script>
-    (function () {
-      function reportHeight() {
-        try {
-          var h = Math.max(
-            document.documentElement.scrollHeight,
-            document.body.scrollHeight,
-            document.documentElement.offsetHeight,
-            document.body.offsetHeight
-          );
-          if (window.FlutterReadmeHeight && window.FlutterReadmeHeight.postMessage) {
-            window.FlutterReadmeHeight.postMessage(String(h));
-          }
-        } catch (e) {}
-      }
-      if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        reportHeight();
-      } else {
-        document.addEventListener('DOMContentLoaded', reportHeight);
-      }
-      window.addEventListener('load', reportHeight);
-      if (window.ResizeObserver) {
-        try { new ResizeObserver(reportHeight).observe(document.body); } catch (e) {}
-      }
-      Array.prototype.forEach.call(document.images || [], function (img) {
-        if (!img.complete) {
-          img.addEventListener('load', reportHeight);
-          img.addEventListener('error', reportHeight);
-        }
-      });
-    })();
-  </script>
-</body>
-</html>
-''';
   }
 
   String _resolveReadmeUrl(String href, {bool forImage = false}) {
@@ -1012,15 +1008,6 @@ class _ReadmeTabState extends State<_ReadmeTab>
 
   String _rawUrlFor(String path) =>
       'https://raw.githubusercontent.com/${widget.owner}/${widget.repo}/${_encodePath(widget.defaultBranch)}/${_encodePath(path)}';
-
-  String _escapeHtmlAttribute(String value) {
-    return value
-        .replaceAll('&', '&amp;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;');
-  }
 
   String _encodePath(String path) =>
       path.split('/').map(Uri.encodeComponent).join('/');

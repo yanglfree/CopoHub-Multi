@@ -8,6 +8,7 @@ import '../../services/auth_service.dart';
 import '../../router/app_router.dart';
 import '../../utils/constants.dart';
 import '../../utils/platform_utils.dart';
+import '../../l10n/app_localizations.dart';
 
 // webview_flutter uses the OpenHarmony-SIG fork which provides ohos support.
 bool get _isOhos => isOhos;
@@ -91,21 +92,23 @@ class _LoginPageState extends State<LoginPage> {
       context.go(AppRoutes.dashboard);
     } else {
       _handlingCallback = false;
-      setState(() => _errorMessage = result.message ?? '登录失败，请重试');
+      setState(() => _errorMessage =
+          result.message ?? AppLocalizations.of(context).loginFailedRetry);
     }
   }
 
   // ── PAT token flow ─────────────────────────────────────────────────────────
 
   Future<void> _loginWithToken() async {
+    final l10n = AppLocalizations.of(context);
     if (!_agreementAccepted) {
-      setState(() => _errorMessage = '请先阅读并接受服务协议和隐私条款');
+      setState(() => _errorMessage = l10n.acceptTermsFirst);
       return;
     }
 
     final token = _tokenController.text.trim();
     if (token.isEmpty) {
-      setState(() => _errorMessage = '请输入 Personal Access Token');
+      setState(() => _errorMessage = l10n.enterPATFirst);
       return;
     }
     setState(() {
@@ -121,7 +124,7 @@ class _LoginPageState extends State<LoginPage> {
     if (result.success) {
       context.go(AppRoutes.dashboard);
     } else {
-      setState(() => _errorMessage = result.message ?? 'Token 登录失败，请检查后重试');
+      setState(() => _errorMessage = result.message ?? l10n.tokenLoginFailed);
     }
   }
 
@@ -201,10 +204,11 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     if (_showWebView && _webViewController != null) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('使用 GitHub 登录'),
+          title: Text(l10n.loginWithGithub),
           leading: IconButton(
             icon: const Icon(Icons.close),
             onPressed: () => setState(() {
@@ -306,7 +310,7 @@ class _LoginPageState extends State<LoginPage> {
         ),
         const SizedBox(height: 6),
         Text(
-          'GitHub移动客户端',
+          AppLocalizations.of(context).githubMobileClient,
           style: Theme.of(context)
               .textTheme
               .titleLarge
@@ -340,7 +344,7 @@ class _LoginPageState extends State<LoginPage> {
                 TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
-            child: const Text('使用GitHub登录'),
+            child: Text(AppLocalizations.of(context).loginWithGithub),
           ),
         ),
         const SizedBox(height: 24),
@@ -369,7 +373,7 @@ class _LoginPageState extends State<LoginPage> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            child: const Text('使用访问令牌登录'),
+            child: Text(AppLocalizations.of(context).loginWithToken),
           ),
         ),
       ],
@@ -384,7 +388,7 @@ class _LoginPageState extends State<LoginPage> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18),
           child: Text(
-            '或者',
+            AppLocalizations.of(context).or,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: cs.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
@@ -398,6 +402,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildTokenPanel(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -416,7 +421,7 @@ class _LoginPageState extends State<LoginPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '使用Personal Access Token登录',
+            l10n.loginWithPAT,
             textAlign: TextAlign.center,
             style: Theme.of(context)
                 .textTheme
@@ -425,7 +430,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            '请在GitHub设置中生成Personal Access Token，并确保包含 repo 和 user 权限。',
+            l10n.patDesc,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: cs.onSurfaceVariant,
@@ -454,7 +459,7 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text('粘贴'),
+                  child: Text(l10n.paste),
                 ),
               ),
             ],
@@ -472,7 +477,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 elevation: 0,
               ),
-              child: const Text('登录'),
+              child: Text(l10n.login),
             ),
           ),
           const SizedBox(height: 10),
@@ -486,7 +491,7 @@ class _LoginPageState extends State<LoginPage> {
                         _tokenController.clear();
                         _errorMessage = '';
                       }),
-              child: const Text('返回'),
+              child: Text(l10n.back),
             ),
           ),
         ],
@@ -504,7 +509,7 @@ class _LoginPageState extends State<LoginPage> {
       ],
       contextMenuBuilder: _isOhos ? _buildOhosTokenContextMenu : null,
       decoration: InputDecoration(
-        hintText: '输入您的Personal Access Token',
+        hintText: AppLocalizations.of(context).enterPAT,
         hintStyle: TextStyle(
           color: Theme.of(context).colorScheme.outline,
           fontSize: 13,
@@ -555,6 +560,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildAgreement(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -571,25 +577,25 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                '我已阅读并接受 ',
+                l10n.readAndAccept,
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
                     ?.copyWith(color: cs.onSurfaceVariant),
               ),
               _FooterLink(
-                text: '《服务协议》',
+                text: l10n.termsOfService,
                 onTap: () => _showPolicy(PolicyTab.terms),
               ),
               Text(
-                ' 和 ',
+                l10n.and,
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
                     ?.copyWith(color: cs.onSurfaceVariant),
               ),
               _FooterLink(
-                text: '《隐私条款》',
+                text: l10n.privacyPolicy,
                 onTap: () => _showPolicy(PolicyTab.privacy),
               ),
             ],
@@ -601,16 +607,17 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildFooter(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Column(
       children: [
         _FooterLink(
-          text: '如何获取Personal Access Token?',
+          text: l10n.howToGetPAT,
           fontSize: 16,
           onTap: _openTokenHelp,
         ),
         const SizedBox(height: 10),
         Text(
-          '版本 ${Constants.appVersion}',
+          '${l10n.version} ${Constants.appVersion}',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: cs.outline,

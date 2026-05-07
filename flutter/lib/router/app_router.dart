@@ -29,6 +29,7 @@ import '../pages/commit/commit_detail_page.dart';
 import '../pages/commit/diff_file_detail_page.dart';
 import '../pages/file_viewer/file_viewer_page.dart';
 import '../pages/featured/featured_page.dart';
+import '../l10n/app_localizations.dart';
 
 // ── Route names ───────────────────────────────────────────────────────────────
 
@@ -254,10 +255,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: AppRoutes.search, builder: (_, __) => const SearchPage()),
       GoRoute(
           path: AppRoutes.curated,
-          builder: (_, state) {
+          builder: (context, state) {
             final item = state.extra as CopoHubCuratedItem?;
             if (item == null) {
-              return const Scaffold(body: Center(child: Text('仓库信息缺失')));
+              return Scaffold(
+                  body: Center(
+                      child: Text(AppLocalizations.of(context).missingRepoInfo)));
             }
             return CuratedDetailPage(item: item);
           }),
@@ -270,12 +273,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: AppRoutes.member, builder: (_, __) => const MemberGatePage()),
       GoRoute(
           path: AppRoutes.repoAnalysis,
-          builder: (_, state) {
+          builder: (context, state) {
             final extra = state.extra as Map<String, dynamic>?;
             final owner = extra?['owner'] as String? ?? '';
             final repo = extra?['repo'] as String? ?? '';
             if (owner.isEmpty || repo.isEmpty) {
-              return const Scaffold(body: Center(child: Text('参数缺失')));
+              return Scaffold(
+                  body: Center(
+                      child: Text(AppLocalizations.of(context).missingParams)));
             }
             return RepoAnalysisPage(owner: owner, repo: repo);
           }),
@@ -304,37 +309,38 @@ class _DashboardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       body: shell,
       bottomNavigationBar: AdaptiveBottomNavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) =>
             shell.goBranch(i, initialLocation: i == shell.currentIndex),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: '首页',
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home),
+            label: l10n.home,
           ),
           NavigationDestination(
-            icon: Icon(Icons.explore_outlined),
-            selectedIcon: Icon(Icons.explore),
-            label: '发现',
+            icon: const Icon(Icons.explore_outlined),
+            selectedIcon: const Icon(Icons.explore),
+            label: l10n.discoverTitle,
           ),
           NavigationDestination(
-            icon: Icon(Icons.star_outline),
-            selectedIcon: Icon(Icons.star),
-            label: '精选',
+            icon: const Icon(Icons.star_outline),
+            selectedIcon: const Icon(Icons.star),
+            label: l10n.featured,
           ),
           NavigationDestination(
-            icon: Icon(Icons.notifications_outlined),
-            selectedIcon: Icon(Icons.notifications),
-            label: '通知',
+            icon: const Icon(Icons.notifications_outlined),
+            selectedIcon: const Icon(Icons.notifications),
+            label: l10n.notifications,
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '我的',
+            icon: const Icon(Icons.person_outline),
+            selectedIcon: const Icon(Icons.person),
+            label: l10n.profile,
           ),
         ],
       ),

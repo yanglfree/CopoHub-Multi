@@ -21,7 +21,40 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
   bool _hasWiki = true;
   bool _autoInit = true;
 
+  String _gitignore = '';
+  String _license = '';
+
   bool _loading = false;
+
+  static const _gitignoreOptions = [
+    '',
+    'Dart',
+    'Flutter',
+    'Node',
+    'Python',
+    'Java',
+    'Go',
+    'Rust',
+    'Swift',
+    'Kotlin',
+    'C',
+    'C++',
+    'Ruby',
+    'Rails',
+  ];
+
+  static const _licenseOptions = [
+    ('', '无'),
+    ('mit', 'MIT License'),
+    ('apache-2.0', 'Apache License 2.0'),
+    ('gpl-3.0', 'GNU GPL v3'),
+    ('agpl-3.0', 'GNU AGPL v3'),
+    ('lgpl-2.1', 'GNU LGPL v2.1'),
+    ('bsd-2-clause', 'BSD 2-Clause'),
+    ('bsd-3-clause', 'BSD 3-Clause'),
+    ('mpl-2.0', 'Mozilla Public License 2.0'),
+    ('unlicense', 'The Unlicense'),
+  ];
 
   @override
   void dispose() {
@@ -44,6 +77,8 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
       'has_projects': _hasProjects,
       'has_wiki': _hasWiki,
       'auto_init': _autoInit,
+      if (_gitignore.isNotEmpty) 'gitignore_template': _gitignore,
+      if (_license.isNotEmpty) 'license_template': _license,
     });
 
     if (!mounted) return;
@@ -179,13 +214,39 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
             // ── 初始化仓库 ─────────────────────────────────────────────────
             const _SectionLabel(label: '初始化仓库'),
             _InputCard(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Text(
-                  '创建后可以添加 .gitignore 模板和开源协议',
-                  style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant),
-                ),
+              child: Column(
+                children: [
+                  _PickerRow(
+                    title: '添加 .gitignore',
+                    value: _gitignore.isEmpty ? '无' : _gitignore,
+                    onTap: () => _pickOption(
+                      context: context,
+                      title: '选择 .gitignore 模板',
+                      options: _gitignoreOptions
+                          .map((v) => (v, v.isEmpty ? '无' : v))
+                          .toList(),
+                      current: _gitignore,
+                      onSelected: (v) => setState(() => _gitignore = v),
+                    ),
+                  ),
+                  const Divider(height: 1, indent: 16),
+                  _PickerRow(
+                    title: '选择许可证',
+                    value: _licenseOptions
+                        .firstWhere(
+                          (e) => e.$1 == _license,
+                          orElse: () => _licenseOptions.first,
+                        )
+                        .$2,
+                    onTap: () => _pickOption(
+                      context: context,
+                      title: '选择许可证',
+                      options: _licenseOptions.toList(),
+                      current: _license,
+                      onSelected: (v) => setState(() => _license = v),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 32),
@@ -213,6 +274,56 @@ class _CreateRepoPageState extends State<CreateRepoPage> {
               ),
             ),
             const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickOption({
+    required BuildContext context,
+    required String title,
+    required List<(String, String)> options,
+    required String current,
+    required ValueChanged<String> onSelected,
+  }) async {
+    final cs = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(title,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (_, i) {
+                  final (value, label) = options[i];
+                  final selected = value == current;
+                  return ListTile(
+                    title: Text(label),
+                    trailing: selected
+                        ? Icon(Icons.check, color: cs.primary)
+                        : null,
+                    onTap: () {
+                      onSelected(value);
+                      Navigator.of(ctx).pop();
+                    },
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -359,6 +470,41 @@ class _CheckRow extends StatelessWidget {
                   ? const Icon(Icons.check, color: Colors.white, size: 15)
                   : null,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PickerRow extends StatelessWidget {
+  const _PickerRow({
+    required this.title,
+    required this.value,
+    required this.onTap,
+  });
+  final String title;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(title,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w500)),
+            ),
+            Text(value,
+                style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 18, color: cs.onSurfaceVariant),
           ],
         ),
       ),

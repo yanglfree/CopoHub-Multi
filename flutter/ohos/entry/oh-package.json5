@@ -6,6 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "webview_flutter_ohos": "file:../har/webview_flutter_ohos.har"
+    "webview_flutter_ohos": "file:../har/webview_flutter_ohos.har",
+    "url_launcher_ohos": "file:../har/url_launcher_ohos.har"
   }
 }

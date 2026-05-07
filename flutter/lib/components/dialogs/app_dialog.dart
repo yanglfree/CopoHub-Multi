@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 
 class AppDialogAction {
   const AppDialogAction({
@@ -165,11 +166,12 @@ Future<bool> showAppConfirmDialog({
   required BuildContext context,
   required String title,
   required String message,
-  String cancelLabel = '取消',
-  String confirmLabel = '确定',
+  String? cancelLabel,
+  String? confirmLabel,
   IconData? icon,
   bool isDestructive = false,
 }) async {
+  final l10n = AppLocalizations.of(context);
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AppDialog(
@@ -177,11 +179,11 @@ Future<bool> showAppConfirmDialog({
       icon: icon,
       actions: [
         AppDialogAction(
-          label: cancelLabel,
+          label: cancelLabel ?? l10n.cancel,
           onPressed: () => Navigator.pop(dialogContext, false),
         ),
         AppDialogAction(
-          label: confirmLabel,
+          label: confirmLabel ?? l10n.confirm,
           isPrimary: true,
           isDestructive: isDestructive,
           onPressed: () => Navigator.pop(dialogContext, true),

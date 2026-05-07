@@ -58,6 +58,8 @@ dependencies:
 
 # Force all webview sub-packages to use the SIG fork so that version
 # resolution is consistent across android / ios / ohos platforms.
+# url_launcher_ohos is the HarmonyOS implementation of url_launcher from the
+# same SIG fork; it must be declared here so Flutter activates the ohos plugin.
 dependency_overrides:
   webview_flutter_android:
     git:
@@ -71,6 +73,10 @@ dependency_overrides:
     git:
       url: https://gitee.com/openharmony-sig/flutter_packages.git
       path: packages/webview_flutter/webview_flutter_platform_interface
+  url_launcher_ohos:
+    git:
+      url: https://gitee.com/openharmony-sig/flutter_packages.git
+      path: packages/url_launcher/url_launcher_ohos
 
 dev_dependencies:
   flutter_test:

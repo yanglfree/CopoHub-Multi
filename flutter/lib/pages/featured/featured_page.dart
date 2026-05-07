@@ -96,6 +96,10 @@ class _FeaturedPageState extends State<FeaturedPage> {
 
   // ── Data loading ─────────────────────────────────────────────────────────
 
+  // On the daily-report tab (segment 1) the period is always 'daily',
+  // regardless of the trending filter selected on segment 0.
+  String get _effectiveSince => _segment == 1 ? 'daily' : _since;
+
   // Normalize date for weekly/monthly API requests.
   // Weekly data is anchored to Monday; monthly to the 1st of the month.
   String _effectiveApiDate() {
@@ -150,15 +154,27 @@ class _FeaturedPageState extends State<FeaturedPage> {
       _reportLoading = true;
       _reportError = '';
     });
-    final result = await _dailyApi.getDailyReport(_selectedDate);
+    final isToday = _selectedDate == _todayStr();
+    // 当选中日期是今天时，今日报告可能尚未生成，直接使用 latest 接口获取最新报告
+    final result = isToday
+        ? await _dailyApi.getLatestReport()
+        : await _dailyApi.getDailyReport(_selectedDate);
+    final reportDate =
+        result.isSuccess ? result.data!['date'] as String? : null;
+    final trendingDate =
+        (reportDate != null && reportDate.isNotEmpty) ? reportDate : _selectedDate;
     final trendingResult = result.isSuccess
-        ? await _dailyApi.getTrending(_selectedDate, limit: 50)
+        ? await _dailyApi.getTrending(trendingDate, limit: 50)
         : null;
     if (!mounted) return;
     setState(() {
       _reportLoading = false;
       if (result.isSuccess) {
         _reportNotFound = false;
+        // 更新日期 header 为报告实际日期
+        if (reportDate != null && reportDate.isNotEmpty && isToday) {
+          _selectedDate = reportDate;
+        }
         _report = dailyReportWithRepositoryData(
           result.data!,
           trendingResult?.data?.items
@@ -175,7 +191,6 @@ class _FeaturedPageState extends State<FeaturedPage> {
         );
       } else if (result.error == 'not_found') {
         _reportNotFound = true;
-        final isToday = _selectedDate == _todayStr();
         _reportError = isToday ? '今日报告尚未生成\n通常于每天下午发布，请稍后再来' : '该日期暂无报告数据';
       } else {
         _reportNotFound = false;
@@ -213,7 +228,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
   void _changeDate(int delta) {
     final current = DateTime.tryParse(_selectedDate) ?? DateTime.now();
     final DateTime next;
-    switch (_since) {
+    switch (_effectiveSince) {
       case 'weekly':
         next = current.add(Duration(days: 7 * delta));
       case 'monthly':
@@ -229,7 +244,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
     final today = DateTime.now();
     final current = DateTime.tryParse(_selectedDate) ?? today;
     final DateTime? picked;
-    switch (_since) {
+    switch (_effectiveSince) {
       case 'weekly':
         picked = await showDialog<DateTime>(
           context: context,
@@ -353,7 +368,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
                       trendingError: _trendingError,
                       language: _language,
                       languages: _languages,
-                      since: _since,
+                      since: _effectiveSince,
                       report: _report,
                       reportLoading: _reportLoading,
                       reportError: _reportError,

@@ -1,4 +1,5 @@
 import { FlutterEngine, Log } from '@ohos/flutter_ohos';
+import UrlLauncherPlugin from 'url_launcher_ohos';
 import WebViewFlutterPlugin from 'webview_flutter_ohos';
 
 /**
@@ -13,6 +14,7 @@ export class GeneratedPluginRegistrant {
 
   static registerWith(flutterEngine: FlutterEngine) {
     try {
+      flutterEngine.getPlugins()?.add(new UrlLauncherPlugin());
       flutterEngine.getPlugins()?.add(new WebViewFlutterPlugin());
     } catch (e) {
       Log.e(

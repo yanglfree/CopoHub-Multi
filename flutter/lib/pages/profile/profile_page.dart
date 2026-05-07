@@ -12,6 +12,7 @@ import '../../models/user_activity.dart';
 import '../../models/user_status.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
+import '../../l10n/app_localizations.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -176,7 +177,9 @@ class _ProfilePageState extends State<ProfilePage> {
       _followers = followers.data ?? [];
       _following = following.data ?? [];
       if (!followers.success || !following.success) {
-        _socialError = followers.message ?? following.message ?? '加载失败';
+        _socialError = followers.message ??
+            following.message ??
+            AppLocalizations.of(context).loadFailed;
       }
     });
   }
@@ -204,7 +207,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       actions: [
         IconButton(
-          tooltip: '设置',
+          tooltip: AppLocalizations.of(context).settings,
           icon: const Icon(Icons.settings_outlined),
           onPressed: () => context.push(AppRoutes.settings),
         ),
@@ -410,12 +413,13 @@ class _ProfileActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Row(
       children: [
         Expanded(
           child: _ProfileActionButton(
             icon: Icons.edit_outlined,
-            label: '编辑资料',
+            label: l10n.editProfile,
             onPressed: onEditProfile,
           ),
         ),
@@ -423,7 +427,7 @@ class _ProfileActionButtons extends StatelessWidget {
         Expanded(
           child: _ProfileActionButton(
             icon: Icons.emoji_emotions_outlined,
-            label: status?.isNotEmpty == true ? '修改状态' : '设置状态',
+            label: status?.isNotEmpty == true ? l10n.changeStatus : l10n.setStatus,
             onPressed: onEditStatus,
           ),
         ),
@@ -626,22 +630,23 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     }
     setState(() {
       _saving = false;
-      _error = result.message ?? '更新资料失败';
+      _error = result.message ?? AppLocalizations.of(context).loadFailed;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AppDialog(
-      title: '编辑资料',
+      title: l10n.editProfileTitle,
       icon: Icons.edit_outlined,
       actions: [
         AppDialogAction(
-          label: '取消',
+          label: l10n.cancel,
           onPressed: _saving ? null : () => Navigator.pop(context),
         ),
         AppDialogAction(
-          label: '保存',
+          label: l10n.save,
           isPrimary: true,
           isLoading: _saving,
           onPressed: _saving ? null : _save,
@@ -651,32 +656,34 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _ProfileTextField(controller: _name, label: 'Name', hint: '未填写'),
+            _ProfileTextField(
+                controller: _name, label: l10n.nameLabel, hint: l10n.notFilled),
             _ProfileTextField(
               controller: _email,
-              label: 'Public email',
-              hint: '未填写',
+              label: l10n.emailLabel,
+              hint: l10n.notFilled,
             ),
-            _ProfileTextField(controller: _blog, label: 'Blog', hint: '未填写'),
+            _ProfileTextField(
+                controller: _blog, label: l10n.blogLabel, hint: l10n.notFilled),
             _ProfileTextField(
               controller: _twitter,
               label: 'Twitter username',
-              hint: '未填写',
+              hint: l10n.notFilled,
             ),
             _ProfileTextField(
               controller: _company,
-              label: 'Company',
-              hint: '未填写',
+              label: l10n.companyLabel,
+              hint: l10n.notFilled,
             ),
             _ProfileTextField(
               controller: _location,
-              label: 'Location',
-              hint: '未填写',
+              label: l10n.locationLabel,
+              hint: l10n.notFilled,
             ),
             _ProfileTextField(
               controller: _bio,
-              label: 'Bio',
-              hint: '未填写',
+              label: l10n.bioLabel,
+              hint: l10n.notFilled,
               maxLines: 3,
             ),
             CheckboxListTile(
@@ -685,7 +692,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
               onChanged: _saving
                   ? null
                   : (value) => setState(() => _hireable = value ?? false),
-              title: const Text('Available for hire'),
+              title: Text(l10n.availableForHire),
               controlAffinity: ListTileControlAffinity.leading,
             ),
             if (_error.isNotEmpty)
@@ -768,26 +775,27 @@ class _EditStatusDialogState extends State<_EditStatusDialog> {
     }
     setState(() {
       _saving = false;
-      _error = result.message ?? '更新状态失败';
+      _error = result.message ?? AppLocalizations.of(context).loadFailed;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AppDialog(
-      title: '设置状态',
+      title: l10n.setStatus,
       icon: Icons.emoji_emotions_outlined,
       actions: [
         AppDialogAction(
-          label: '清除',
+          label: l10n.clear,
           onPressed: _saving ? null : _clear,
         ),
         AppDialogAction(
-          label: '取消',
+          label: l10n.cancel,
           onPressed: _saving ? null : () => Navigator.pop(context),
         ),
         AppDialogAction(
-          label: '保存',
+          label: l10n.save,
           isPrimary: true,
           isLoading: _saving,
           onPressed: _saving ? null : _save,
@@ -805,8 +813,8 @@ class _EditStatusDialogState extends State<_EditStatusDialog> {
             ),
             _ProfileTextField(
               controller: _message,
-              label: 'Status message',
-              hint: '未填写',
+              label: l10n.statusMessageLabel,
+              hint: l10n.notFilled,
             ),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
@@ -816,7 +824,7 @@ class _EditStatusDialogState extends State<_EditStatusDialog> {
                   : (value) => setState(
                         () => _limitedAvailability = value ?? false,
                       ),
-              title: const Text('Busy / limited availability'),
+              title: Text(l10n.busyLabel),
               controlAffinity: ListTileControlAffinity.leading,
             ),
             if (_error.isNotEmpty)
@@ -934,6 +942,7 @@ class _StatsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       decoration: BoxDecoration(
@@ -943,11 +952,11 @@ class _StatsBar extends StatelessWidget {
       child: IntrinsicHeight(
         child: Row(
           children: [
-            _StatItem(label: '仓库', value: '${user.publicRepos}'),
+            _StatItem(label: l10n.repositories, value: '${user.publicRepos}'),
             const VerticalDivider(width: 1),
-            _StatItem(label: '关注者', value: _fmt(user.followers)),
+            _StatItem(label: l10n.followers, value: _fmt(user.followers)),
             const VerticalDivider(width: 1),
-            _StatItem(label: '正在关注', value: '${user.following}'),
+            _StatItem(label: l10n.following, value: '${user.following}'),
           ],
         ),
       ),
@@ -1039,7 +1048,8 @@ class _OrgRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('所属组织', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(AppLocalizations.of(context).organizations,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -1126,6 +1136,7 @@ class _ActivitySummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     if (loading) {
       return const Padding(
@@ -1145,7 +1156,8 @@ class _ActivitySummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('近期动态', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(l10n.recentActivity,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -1173,7 +1185,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '近90天',
+                        l10n.last90Days,
                         style: TextStyle(
                             fontSize: 10,
                             color: cs.onSurfaceVariant,
@@ -1187,7 +1199,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                       Expanded(
                         child: _ActivityMetric(
                           value: activity!.commitCount,
-                          label: '提交',
+                          label: l10n.commits,
                           icon: Icons.commit_rounded,
                           color: cs.primary,
                         ),
@@ -1199,7 +1211,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                       Expanded(
                         child: _ActivityMetric(
                           value: activity!.repoCount,
-                          label: '新仓库',
+                          label: l10n.newRepos,
                           icon: Icons.folder_special_outlined,
                           color: cs.secondary,
                         ),
@@ -1211,7 +1223,7 @@ class _ActivitySummaryCard extends StatelessWidget {
                       Expanded(
                         child: _ActivityMetric(
                           value: activity!.prCount,
-                          label: 'PR',
+                          label: l10n.pullRequests,
                           icon: Icons.call_merge_rounded,
                           color: cs.tertiary,
                         ),
@@ -1322,7 +1334,7 @@ class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  widget.isTopRepos ? '热门仓库' : '置顶仓库',
+                  widget.isTopRepos ? AppLocalizations.of(context).topRepos : AppLocalizations.of(context).pinnedRepos,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ],
@@ -1530,9 +1542,9 @@ class _SocialSectionState extends State<_SocialSection> {
                   children: [
                     Icon(Icons.person_outline, size: 20, color: cs.onSurface),
                     const SizedBox(width: 8),
-                    const Text(
-                      '社交',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    Text(
+                      AppLocalizations.of(context).social,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
@@ -1588,6 +1600,7 @@ class _SocialTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: cs.outlineVariant)),
@@ -1595,13 +1608,13 @@ class _SocialTabs extends StatelessWidget {
       child: Row(
         children: [
           _SocialTab(
-            title: '关注者',
+            title: l10n.followers,
             count: followersCount,
             selected: selectedIndex == 0,
             onTap: () => onSelected(0),
           ),
           _SocialTab(
-            title: '正在关注',
+            title: l10n.following,
             count: followingCount,
             selected: selectedIndex == 1,
             onTap: () => onSelected(1),
@@ -1723,7 +1736,7 @@ class _SocialMoreTile extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '查看全部',
+              AppLocalizations.of(context).viewAll,
               style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600),
             ),
             const SizedBox(width: 4),
@@ -1760,10 +1773,11 @@ class _SocialError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return ApiErrorView(
       message: message,
       onRetry: onRetry,
-      title: '社交信息加载失败',
+      title: l10n.socialLoadFailed,
       compact: true,
     );
   }
@@ -1775,11 +1789,12 @@ class _SocialEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SizedBox(
       height: 152,
       child: Center(
         child: Text(
-          isFollowers ? '暂无关注者' : '暂无正在关注',
+          isFollowers ? l10n.noFollowers : l10n.noFollowing,
           style:
               TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),

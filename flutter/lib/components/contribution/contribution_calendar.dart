@@ -4,18 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/contribution_service.dart';
 import '../../utils/constants.dart';
+import '../../l10n/app_localizations.dart';
 
 /// GitHub-style contribution heatmap calendar.
-///
-/// Default behaviour mirrors GitHub's profile page:
-///   - On first load the trailing-year (last 365 days) is shown, while the
-///     current-year tab on the right appears highlighted.
-///   - Tapping any year tab switches to that calendar year's data.
-///
-/// Layout:
-///   header row  (title + count)
-///   [weekday labels | scrollable month+grid | year tabs]
-///   legend
 class ContributionCalendar extends ConsumerStatefulWidget {
   const ContributionCalendar({
     super.key,
@@ -83,7 +74,7 @@ class _ContributionCalendarState extends ConsumerState<ContributionCalendar> {
     if (summary == null) {
       setState(() {
         _loading = false;
-        _error = '加载失败';
+        _error = AppLocalizations.of(context).loadFailed;
       });
     } else {
       setState(() {
@@ -106,6 +97,7 @@ class _ContributionCalendarState extends ConsumerState<ContributionCalendar> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final l10n = AppLocalizations.of(context);
     final colors = _ContributionColors.fromHex(
       ref.watch(contributionColorsProvider),
       isDark: isDark,
@@ -121,7 +113,7 @@ class _ContributionCalendarState extends ConsumerState<ContributionCalendar> {
           child: Row(
             children: [
               Text(
-                '贡献热力图',
+                l10n.contributionHeatmap,
                 style: Theme.of(context)
                     .textTheme
                     .titleSmall
@@ -145,8 +137,8 @@ class _ContributionCalendarState extends ConsumerState<ContributionCalendar> {
                     alignment: Alignment.centerRight,
                     child: Text(
                       _isLastYear
-                          ? '${_summary!.totalContributions} contributions in the last year'
-                          : '${_summary!.totalContributions} contributions in $_year',
+                          ? l10n.contributionsInLastYear(_summary!.totalContributions)
+                          : l10n.contributionsInYear(_summary!.totalContributions, _year),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -217,13 +209,14 @@ class _ContributionThemeMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     const themes = Constants.contributionThemes;
     final current =
         themes.where((theme) => theme.name == selectedTheme).firstOrNull ??
             themes.first;
 
     return PopupMenuButton<String>(
-      tooltip: '更改贡献图颜色',
+      tooltip: l10n.changeHeatmapColor,
       initialValue: selectedTheme,
       onSelected: onSelected,
       itemBuilder: (context) => themes
@@ -427,7 +420,7 @@ class _CalendarGrid extends StatelessWidget {
   }
 }
 
-// ── Weekday labels (周一 / 周三 / 周五) ────────────────────────────────────────
+// ── Weekday labels ────────────────────────────────────────────────────────────
 
 class _WeekdayLabels extends StatelessWidget {
   const _WeekdayLabels({
@@ -442,15 +435,13 @@ class _WeekdayLabels extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final style = TextStyle(
       fontSize: 9,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
       height: 1,
     );
 
-    // Mirror the grid's Padding(bottom: cellGap)+SizedBox(cellSize) structure
-    // so labels align exactly with the centres of the corresponding cells.
-    // Grid rows (Sunday-first): Sun(0) Mon(1) Tue(2) Wed(3) Thu(4) Fri(5) Sat(6)
     Widget slot(String? label) => Padding(
           padding: EdgeInsets.only(bottom: cellGap),
           child: SizedBox(
@@ -470,11 +461,11 @@ class _WeekdayLabels extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           slot(null), // Sunday
-          slot('周一'), // Monday
+          slot(l10n.mon),
           slot(null), // Tuesday
-          slot('周三'), // Wednesday
+          slot(l10n.wed),
           slot(null), // Thursday
-          slot('周五'), // Friday
+          slot(l10n.fri),
           slot(null), // Saturday
         ],
       ),
@@ -482,7 +473,7 @@ class _WeekdayLabels extends StatelessWidget {
   }
 }
 
-// ── Month labels + cell grid (rendered together so they scroll in sync) ────────
+// ── Month labels + cell grid ──────────────────────────────────────────────────
 
 class _GridWithMonths extends StatelessWidget {
   const _GridWithMonths({
@@ -499,8 +490,6 @@ class _GridWithMonths extends StatelessWidget {
   final double cellSize;
   final double cellGap;
   final double monthLabelH;
-
-  /// When set, only month labels belonging to this year are shown.
   final int? filterYear;
 
   @override
@@ -560,39 +549,20 @@ class _MonthLabels extends StatelessWidget {
   final double height;
   final int? filterYear;
 
-  static const _monthNames = [
-    '1月',
-    '2月',
-    '3月',
-    '4月',
-    '5月',
-    '6月',
-    '7月',
-    '8月',
-    '9月',
-    '10月',
-    '11月',
-    '12月',
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final monthNames = l10n.months;
     final style = TextStyle(
       fontSize: 9,
       color: Theme.of(context).colorScheme.onSurfaceVariant,
       height: 1,
     );
 
-    // Find the column index at which each new month first appears.
-    // When filterYear is set, skip months from other years to prevent
-    // "12月/1月" overlap at the start of a calendar-year view.
-    // Also enforce a minimum column gap so labels never overlap each other
-    // (e.g. when the range starts near month-end, two months land in the
-    // same or adjacent columns).
-    const minColGap = 3; // ≈ 36 px — enough to fit even a wide label
+    const minColGap = 3;
     final labels = <(int, String)>[];
     int? lastMonth;
-    int lastLabelCol = -minColGap; // allow first label at col 0
+    int lastLabelCol = -minColGap;
     for (int col = 0; col < weeks.length; col++) {
       for (final day in weeks[col].days) {
         if (day.date.length >= 7) {
@@ -601,11 +571,11 @@ class _MonthLabels extends StatelessWidget {
           if (month != null && month != lastMonth) {
             if (filterYear == null || dayYear == filterYear) {
               if (col - lastLabelCol >= minColGap) {
-                labels.add((col, _monthNames[month - 1]));
+                labels.add((col, monthNames[month - 1]));
                 lastLabelCol = col;
               }
             }
-            lastMonth = month; // always advance, even when label is skipped
+            lastMonth = month;
           }
           break;
         }
@@ -653,12 +623,13 @@ class _Cell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final color = colors[level.clamp(0, 4)];
 
     return Tooltip(
       message: count > 0
-          ? '$count contributions on $date'
-          : 'No contributions on $date',
+          ? l10n.contributionsOnDate(count, date)
+          : l10n.noContributionsOnDate(date),
       child: Container(
         width: size,
         height: size,
@@ -680,13 +651,14 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final labelStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         );
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Text('Less', style: labelStyle),
+        Text(l10n.less, style: labelStyle),
         const SizedBox(width: 4),
         ...colors.map(
           (c) => Container(
@@ -700,7 +672,7 @@ class _Legend extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 2),
-        Text('More', style: labelStyle),
+        Text(l10n.more, style: labelStyle),
       ],
     );
   }

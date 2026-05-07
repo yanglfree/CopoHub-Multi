@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
 import '../../models/notification.dart';
+import '../../l10n/app_localizations.dart';
 
-/// "通知" tab — GitHub notifications list, mirroring HarmonyOS NotificationView.
+/// "Notifications" tab — GitHub notifications list.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
 
@@ -23,18 +24,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
   int _page = 1;
   String _error = '';
 
-  static const _filterTabs = [
-    ('all', '全部'),
-    ('unread', '未读'),
-    ('pr', 'PR'),
-    ('issue', 'Issue'),
-  ];
-
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  List<(String, String)> _getFilterTabs(AppLocalizations l10n) => [
+        ('all', l10n.filterAll),
+        ('unread', l10n.unread),
+        ('pr', 'PR'),
+        ('issue', 'Issue'),
+      ];
 
   List<GithubNotification> get _filtered {
     if (_filter == 'all') return _all;
@@ -148,7 +149,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final unread = _all.where((n) => n.unread).length;
+    final unreadCount = _all.where((n) => n.unread).length;
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       body: NestedScrollView(
@@ -158,9 +160,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
             forceElevated: innerBoxIsScrolled,
             title: Row(
               children: [
-                const Text('通知',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                if (unread > 0) ...[
+                Text(l10n.notificationsTitle,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (unreadCount > 0) ...[
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -171,7 +173,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      '$unread',
+                      '$unreadCount',
                       style: TextStyle(
                         fontSize: 11,
                         color: Theme.of(context).colorScheme.onPrimary,
@@ -183,10 +185,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
               ],
             ),
             actions: [
-              if (unread > 0)
+              if (unreadCount > 0)
                 IconButton(
                   icon: const Icon(Icons.done_all),
-                  tooltip: '全部标为已读',
+                  tooltip: l10n.markAllAsRead,
                   onPressed: _markAllRead,
                 ),
             ],
@@ -194,18 +196,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
               preferredSize: const Size.fromHeight(44),
               child: _FilterBar(
                 selected: _filter,
-                tabs: _filterTabs,
+                tabs: _getFilterTabs(l10n),
                 onSelect: (v) => setState(() => _filter = v),
               ),
             ),
           ),
         ],
-        body: _buildBody(),
+        body: _buildBody(l10n),
       ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(AppLocalizations l10n) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -227,7 +229,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               const SizedBox(height: 16),
               OutlinedButton(
                   onPressed: () => _load(refresh: true),
-                  child: const Text('重试')),
+                  child: Text(l10n.retry)),
             ],
           ),
         ),
@@ -238,15 +240,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
       return RefreshIndicator(
         onRefresh: () => _load(refresh: true),
         child: ListView(
-          children: const [
-            SizedBox(height: 120),
+          children: [
+            const SizedBox(height: 120),
             Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.notifications_none, size: 64),
-                  SizedBox(height: 12),
-                  Text('暂无通知'),
+                  const Icon(Icons.notifications_none, size: 64),
+                  const SizedBox(height: 12),
+                  Text(l10n.noNotifications),
                 ],
               ),
             ),
@@ -449,20 +451,21 @@ class _ReasonChip extends StatelessWidget {
   const _ReasonChip({required this.reason});
   final String reason;
 
-  static const _labels = {
-    'mention': '提及',
-    'assign': '分配',
-    'author': '作者',
-    'comment': '评论',
-    'subscribed': '订阅',
-    'review_requested': '审阅',
-    'state_change': '状态变更',
-    'team_mention': '团队提及',
-  };
+  Map<String, String> _getLabels(AppLocalizations l10n) => {
+        'mention': l10n.reasonMention,
+        'assign': l10n.reasonAssign,
+        'author': l10n.reasonAuthor,
+        'comment': l10n.reasonComment,
+        'subscribed': l10n.reasonSubscribed,
+        'review_requested': l10n.reasonReviewRequested,
+        'state_change': l10n.reasonStateChange,
+        'team_mention': l10n.reasonTeamMention,
+      };
 
   @override
   Widget build(BuildContext context) {
-    final label = _labels[reason] ?? reason;
+    final l10n = AppLocalizations.of(context);
+    final label = _getLabels(l10n)[reason] ?? reason;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

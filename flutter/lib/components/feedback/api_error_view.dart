@@ -1,24 +1,27 @@
 import 'package:flutter/material.dart';
 import '../../utils/api_error_message.dart';
+import '../../l10n/app_localizations.dart';
 
 class ApiErrorView extends StatelessWidget {
   const ApiErrorView({
     super.key,
     required this.message,
     required this.onRetry,
-    this.title = '加载失败',
+    this.title,
     this.compact = false,
   });
 
   final String message;
   final VoidCallback onRetry;
-  final String title;
+  final String? title;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final cs = Theme.of(context).colorScheme;
     final friendlyMessage = friendlyApiErrorMessage(message);
+    final displayTitle = title ?? l10n.loadFailed;
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: compact ? 16 : 32),
@@ -41,7 +44,7 @@ class ApiErrorView extends StatelessWidget {
             ),
             SizedBox(height: compact ? 10 : 12),
             Text(
-              title,
+              displayTitle,
               style: (compact
                       ? Theme.of(context).textTheme.titleSmall
                       : Theme.of(context).textTheme.titleMedium)
@@ -71,7 +74,7 @@ class ApiErrorView extends StatelessWidget {
                   : null,
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('重试'),
+              label: Text(l10n.retry),
             ),
           ],
         ),
