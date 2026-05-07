@@ -971,6 +971,75 @@ query($login: String!) {
             (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
       );
 
+  /// Post a comment on an issue or pull request.
+  /// GitHub uses the same endpoint for both.
+  Future<ApiResponse<Map<String, dynamic>>> createIssueComment(
+    String owner,
+    String repo,
+    int number,
+    String body,
+  ) async {
+    try {
+      final response = await _dio.post<dynamic>(
+        '/repos/$owner/$repo/issues/$number/comments',
+        data: {'body': body},
+      );
+      return ApiResponse.ok(response.data as Map<String, dynamic>? ?? {});
+    } on DioException catch (e) {
+      return _handleDioError(e);
+    }
+  }
+
+  /// Create a new pull request.
+  Future<ApiResponse<Map<String, dynamic>>> createPullRequest(
+    String owner,
+    String repo, {
+    required String title,
+    required String head,
+    required String base,
+    String? body,
+    bool draft = false,
+  }) async {
+    final data = <String, dynamic>{
+      'title': title,
+      'head': head,
+      'base': base,
+      'draft': draft,
+    };
+    if (body != null && body.isNotEmpty) data['body'] = body;
+    try {
+      final response = await _dio.post<dynamic>(
+        '/repos/$owner/$repo/pulls',
+        data: data,
+      );
+      return ApiResponse.ok(response.data as Map<String, dynamic>? ?? {});
+    } on DioException catch (e) {
+      return _handleDioError(e);
+    }
+  }
+
+  /// Submit a pull request review.
+  /// [event] must be 'APPROVE', 'REQUEST_CHANGES', or 'COMMENT'.
+  Future<ApiResponse<Map<String, dynamic>>> createPullRequestReview(
+    String owner,
+    String repo,
+    int pullNumber, {
+    required String event,
+    String body = '',
+  }) async {
+    final data = <String, dynamic>{'event': event};
+    if (body.isNotEmpty) data['body'] = body;
+    try {
+      final response = await _dio.post<dynamic>(
+        '/repos/$owner/$repo/pulls/$pullNumber/reviews',
+        data: data,
+      );
+      return ApiResponse.ok(response.data as Map<String, dynamic>? ?? {});
+    } on DioException catch (e) {
+      return _handleDioError(e);
+    }
+  }
+
   // ── Releases ─────────────────────────────────────────────────────────────────────
 
   Future<ApiResponse<List<Map<String, dynamic>>>> getRepositoryReleases(

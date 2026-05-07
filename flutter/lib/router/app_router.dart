@@ -26,6 +26,7 @@ import '../pages/user_profile/user_repositories_page.dart';
 import '../pages/create_repo/create_repo_page.dart';
 import '../pages/issue/issue_detail_page.dart';
 import '../pages/pull_request/pr_detail_page.dart';
+import '../pages/pull_request/create_pr_page.dart';
 import '../pages/commit/commit_detail_page.dart';
 import '../pages/commit/diff_file_detail_page.dart';
 import '../pages/file_viewer/file_viewer_page.dart';
@@ -59,6 +60,7 @@ class AppRoutes {
 
   // Pull Request
   static const pullRequest = '/pr/:owner/:repo/:number';
+  static const createPullRequest = '/pr/new/:owner/:repo';
 
   // File viewer
   static const fileViewer = '/file-viewer';
@@ -202,6 +204,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           owner: state.pathParameters['owner']!,
           repo: state.pathParameters['repo']!,
           number: int.tryParse(state.pathParameters['number']!) ?? 0,
+        ),
+      ),
+
+      // ── Create Pull Request ─────────────────────────────────────────────────
+      GoRoute(
+        path: AppRoutes.createPullRequest,
+        builder: (_, state) => CreatePrPage(
+          owner: state.pathParameters['owner']!,
+          repo: state.pathParameters['repo']!,
         ),
       ),
 

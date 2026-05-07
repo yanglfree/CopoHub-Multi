@@ -1626,6 +1626,15 @@ class _IssuesTabState extends State<_IssuesTab>
                 selected: _typeFilter == 'pulls',
                 onTap: () => _switchType('pulls'),
               ),
+              if (_typeFilter == 'pulls') ...[
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: '创建 Pull Request',
+                  onPressed: () => context.push(
+                      '/pr/new/${widget.owner}/${widget.repo}'),
+                ),
+              ],
             ],
           ),
         ),

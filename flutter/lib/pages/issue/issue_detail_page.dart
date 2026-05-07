@@ -32,11 +32,20 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
   List<Map<String, dynamic>> _comments = [];
   bool _commentsLoading = false;
 
+  final _commentCtrl = TextEditingController();
+  bool _commentPosting = false;
+
   @override
   void initState() {
     super.initState();
     _loadIssue();
     _loadComments();
+  }
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadIssue() async {
@@ -74,11 +83,30 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
     }
   }
 
+  Future<void> _postComment() async {
+    final body = _commentCtrl.text.trim();
+    if (body.isEmpty || _commentPosting) return;
+    setState(() => _commentPosting = true);
+    final r = await _api.createIssueComment(
+        widget.owner, widget.repo, widget.number, body);
+    if (!mounted) return;
+    setState(() => _commentPosting = false);
+    if (r.isSuccess) {
+      _commentCtrl.clear();
+      _loadComments();
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('评论失败: ${r.message ?? ''}')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final issue = _issue;
     final isOpen = (issue?['state'] as String? ?? 'open') == 'open';
     final isPR = issue?['pull_request'] != null;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -87,61 +115,118 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
           style: const TextStyle(fontSize: 15),
         ),
       ),
-      body: _issueLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _issueError.isNotEmpty
-              ? _ErrorRetry(message: _issueError, onRetry: _loadIssue)
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    await Future.wait([_loadIssue(), _loadComments()]);
-                  },
-                  child: ListView(
-                    children: [
-                      // ── Issue header ───────────────────────────────────────
-                      _IssueHeader(
-                        issue: issue!,
-                        isOpen: isOpen,
-                        onUserTap: (login) =>
-                            context.push('/user/$login'),
-                      ),
-                      // ── Comments ───────────────────────────────────────────
-                      Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Text(
-                          '评论 (${_comments.length})',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      if (_commentsLoading)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (_comments.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Center(
-                            child: Text('暂无评论',
-                                style: TextStyle(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant)),
-                          ),
-                        )
-                      else
-                        ..._comments.map((c) => _CommentTile(
-                              comment: c,
+      body: Column(
+        children: [
+          Expanded(
+            child: _issueLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _issueError.isNotEmpty
+                    ? _ErrorRetry(message: _issueError, onRetry: _loadIssue)
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          await Future.wait([_loadIssue(), _loadComments()]);
+                        },
+                        child: ListView(
+                          children: [
+                            // ── Issue header ─────────────────────────────────
+                            _IssueHeader(
+                              issue: issue!,
+                              isOpen: isOpen,
                               onUserTap: (login) =>
                                   context.push('/user/$login'),
-                            )),
-                      const SizedBox(height: 24),
-                    ],
+                            ),
+                            // ── Comments ──────────────────────────────────────
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                              child: Text(
+                                '评论 (${_comments.length})',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            if (_commentsLoading)
+                              const Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Center(
+                                    child: CircularProgressIndicator()),
+                              )
+                            else if (_comments.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Center(
+                                  child: Text('暂无评论',
+                                      style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurfaceVariant)),
+                                ),
+                              )
+                            else
+                              ..._comments.map((c) => _CommentTile(
+                                    comment: c,
+                                    onUserTap: (login) =>
+                                        context.push('/user/$login'),
+                                  )),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
+                      ),
+          ),
+          // ── Comment input bar ─────────────────────────────────────────────
+          if (!_issueLoading && _issueError.isEmpty) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: EdgeInsets.only(
+                left: 12,
+                right: 12,
+                top: 8,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _commentCtrl,
+                      minLines: 1,
+                      maxLines: 4,
+                      textInputAction: TextInputAction.newline,
+                      decoration: InputDecoration(
+                        hintText: '写评论…',
+                        filled: true,
+                        fillColor: cs.surfaceContainerHighest,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  _commentPosting
+                      ? const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : IconButton.filled(
+                          onPressed: _postComment,
+                          icon: const Icon(Icons.send, size: 18),
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(36, 36),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

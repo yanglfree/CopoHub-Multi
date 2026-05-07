@@ -79,7 +79,19 @@ String friendlyDioErrorMessage(
 String? _responseErrorMessage(DioException error) {
   final data = error.response?.data;
   if (data is Map<String, dynamic>) {
-    return data['message'] as String? ?? data['error'] as String?;
+    final msg = data['message'] as String? ?? data['error'] as String?;
+    // GitHub 422 errors carry detail in the `errors` array
+    final errors = data['errors'];
+    if (errors is List && errors.isNotEmpty) {
+      final first = errors.first;
+      final detail = first is Map
+          ? (first['message'] as String? ?? first['field'] as String?)
+          : null;
+      if (detail != null && detail.isNotEmpty) {
+        return detail;
+      }
+    }
+    return msg;
   }
   return null;
 }

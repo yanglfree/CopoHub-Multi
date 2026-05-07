@@ -311,7 +311,11 @@ class _PrDetailPageState extends State<PrDetailPage>
             _CommentsTab(
               comments: _comments,
               loading: _commentsLoading,
+              owner: widget.owner,
+              repo: widget.repo,
+              number: widget.number,
               onUserTap: (login) => context.push('/user/$login'),
+              onCommentPosted: _loadComments,
             ),
             // ── Files tab ───────────────────────────────────────────────────
             _FilesTab(
@@ -322,7 +326,11 @@ class _PrDetailPageState extends State<PrDetailPage>
             // ── Reviews tab ─────────────────────────────────────────────────
             _ReviewsTab(
               reviews: _reviews,
+              owner: widget.owner,
+              repo: widget.repo,
+              number: widget.number,
               onUserTap: (login) => context.push('/user/$login'),
+              onReviewPosted: _loadPr,
             ),
           ],
         ),
@@ -680,27 +688,124 @@ class _ActionBar extends StatelessWidget {
 
 // ── Comments tab ──────────────────────────────────────────────────────────────
 
-class _CommentsTab extends StatelessWidget {
+class _CommentsTab extends StatefulWidget {
   const _CommentsTab({
     required this.comments,
     required this.loading,
+    required this.owner,
+    required this.repo,
+    required this.number,
     required this.onUserTap,
+    required this.onCommentPosted,
   });
   final List<Map<String, dynamic>> comments;
   final bool loading;
+  final String owner;
+  final String repo;
+  final int number;
   final void Function(String) onUserTap;
+  final VoidCallback onCommentPosted;
+
+  @override
+  State<_CommentsTab> createState() => _CommentsTabState();
+}
+
+class _CommentsTabState extends State<_CommentsTab> {
+  final _api = GitHubApiClient.instance;
+  final _ctrl = TextEditingController();
+  bool _posting = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _post() async {
+    final body = _ctrl.text.trim();
+    if (body.isEmpty || _posting) return;
+    setState(() => _posting = true);
+    final r = await _api.createIssueComment(
+        widget.owner, widget.repo, widget.number, body);
+    if (!mounted) return;
+    setState(() => _posting = false);
+    if (r.isSuccess) {
+      _ctrl.clear();
+      widget.onCommentPosted();
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('评论失败: ${r.message ?? ''}')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (comments.isEmpty) {
-      return const Center(child: Text('暂无评论'));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 24),
-      itemCount: comments.length,
-      itemBuilder: (context, i) =>
-          _CommentTile(comment: comments[i], onUserTap: onUserTap),
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Expanded(
+          child: widget.loading
+              ? const Center(child: CircularProgressIndicator())
+              : widget.comments.isEmpty
+                  ? const Center(child: Text('暂无评论'))
+                  : ListView.builder(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      itemCount: widget.comments.length,
+                      itemBuilder: (context, i) => _CommentTile(
+                          comment: widget.comments[i],
+                          onUserTap: widget.onUserTap),
+                    ),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: EdgeInsets.only(
+            left: 12,
+            right: 12,
+            top: 8,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: '写评论…',
+                    filled: true,
+                    fillColor: cs.surfaceContainerHighest,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _posting
+                  ? const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child:
+                          CircularProgressIndicator(strokeWidth: 2))
+                  : IconButton.filled(
+                      onPressed: _post,
+                      icon: const Icon(Icons.send, size: 18),
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(36, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -883,120 +988,184 @@ class _FilesTabState extends State<_FilesTab>
 
 // ── Reviews tab ───────────────────────────────────────────────────────────────
 
-class _ReviewsTab extends StatelessWidget {
-  const _ReviewsTab({required this.reviews, required this.onUserTap});
+class _ReviewsTab extends StatefulWidget {
+  const _ReviewsTab({
+    required this.reviews,
+    required this.owner,
+    required this.repo,
+    required this.number,
+    required this.onUserTap,
+    required this.onReviewPosted,
+  });
   final List<Map<String, dynamic>> reviews;
+  final String owner;
+  final String repo;
+  final int number;
   final void Function(String) onUserTap;
+  final VoidCallback onReviewPosted;
+
+  @override
+  State<_ReviewsTab> createState() => _ReviewsTabState();
+}
+
+class _ReviewsTabState extends State<_ReviewsTab> {
+  void _showReviewSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _ReviewSheet(
+        owner: widget.owner,
+        repo: widget.repo,
+        number: widget.number,
+        onPosted: () {
+          Navigator.of(ctx).pop();
+          widget.onReviewPosted();
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (reviews.isEmpty) return const Center(child: Text('暂无审阅'));
     final cs = Theme.of(context).colorScheme;
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: reviews.length,
-      separatorBuilder: (_, __) =>
-          const Divider(height: 1, indent: 16, endIndent: 16),
-      itemBuilder: (context, i) {
-        final review = reviews[i];
-        final user = review['user'] as Map<String, dynamic>? ?? {};
-        final login = user['login'] as String? ?? '';
-        final avatar = user['avatar_url'] as String? ?? '';
-        final state = review['state'] as String? ?? '';
-        final body = review['body'] as String? ?? '';
-        final submittedAt = review['submitted_at'] as String? ?? '';
-
-        Color stateColor;
-        IconData stateIcon;
-        String stateLabel;
-        switch (state) {
-          case 'APPROVED':
-            stateColor = const Color(0xFF1a7f37);
-            stateIcon = Icons.check_circle_outline;
-            stateLabel = '已批准';
-          case 'CHANGES_REQUESTED':
-            stateColor = const Color(0xFFcf222e);
-            stateIcon = Icons.rate_review_outlined;
-            stateLabel = '请求更改';
-          case 'COMMENTED':
-            stateColor = cs.onSurfaceVariant;
-            stateIcon = Icons.comment_outlined;
-            stateLabel = '评论';
-          case 'DISMISSED':
-            stateColor = cs.onSurfaceVariant;
-            stateIcon = Icons.block_outlined;
-            stateLabel = '已忽略';
-          default:
-            stateColor = cs.onSurfaceVariant;
-            stateIcon = Icons.pending_outlined;
-            stateLabel = state;
-        }
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (avatar.isNotEmpty)
-                GestureDetector(
-                  onTap: login.isNotEmpty ? () => onUserTap(login) : null,
-                  child: ClipOval(
-                    child: CachedNetworkImage(
-                      imageUrl: avatar,
-                      width: 32,
-                      height: 32,
-                      placeholder: (_, __) => Container(
-                          width: 32,
-                          height: 32,
-                          color: cs.surfaceContainerHighest),
-                      errorWidget: (_, __, ___) =>
-                          const Icon(Icons.account_circle, size: 32),
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        GestureDetector(
-                          onTap: login.isNotEmpty ? () => onUserTap(login) : null,
-                          child: Text(login,
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.primary)),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(stateIcon, size: 14, color: stateColor),
-                        const SizedBox(width: 4),
-                        Text(stateLabel,
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: stateColor,
-                                fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        Text(_fmtDate(submittedAt),
-                            style: TextStyle(
-                                fontSize: 11, color: cs.onSurfaceVariant)),
-                      ],
-                    ),
-                    if (body.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(body,
-                          style: TextStyle(
-                              fontSize: 13, color: cs.onSurface, height: 1.4)),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+    return Column(
+      children: [
+        // Submit review button
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _showReviewSheet,
+              icon: const Icon(Icons.rate_review_outlined, size: 18),
+              label: const Text('提交审阅'),
+            ),
           ),
-        );
-      },
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: widget.reviews.isEmpty
+              ? const Center(child: Text('暂无审阅'))
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: widget.reviews.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                  itemBuilder: (context, i) {
+                    final review = widget.reviews[i];
+                    final user =
+                        review['user'] as Map<String, dynamic>? ?? {};
+                    final login = user['login'] as String? ?? '';
+                    final avatar = user['avatar_url'] as String? ?? '';
+                    final state = review['state'] as String? ?? '';
+                    final body = review['body'] as String? ?? '';
+                    final submittedAt =
+                        review['submitted_at'] as String? ?? '';
+
+                    Color stateColor;
+                    IconData stateIcon;
+                    String stateLabel;
+                    switch (state) {
+                      case 'APPROVED':
+                        stateColor = const Color(0xFF1a7f37);
+                        stateIcon = Icons.check_circle_outline;
+                        stateLabel = '已批准';
+                      case 'CHANGES_REQUESTED':
+                        stateColor = const Color(0xFFcf222e);
+                        stateIcon = Icons.rate_review_outlined;
+                        stateLabel = '请求更改';
+                      case 'COMMENTED':
+                        stateColor = cs.onSurfaceVariant;
+                        stateIcon = Icons.comment_outlined;
+                        stateLabel = '评论';
+                      case 'DISMISSED':
+                        stateColor = cs.onSurfaceVariant;
+                        stateIcon = Icons.block_outlined;
+                        stateLabel = '已忽略';
+                      default:
+                        stateColor = cs.onSurfaceVariant;
+                        stateIcon = Icons.pending_outlined;
+                        stateLabel = state;
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (avatar.isNotEmpty)
+                            GestureDetector(
+                              onTap: login.isNotEmpty
+                                  ? () => widget.onUserTap(login)
+                                  : null,
+                              child: ClipOval(
+                                child: CachedNetworkImage(
+                                  imageUrl: avatar,
+                                  width: 32,
+                                  height: 32,
+                                  placeholder: (_, __) => Container(
+                                      width: 32,
+                                      height: 32,
+                                      color: cs.surfaceContainerHighest),
+                                  errorWidget: (_, __, ___) => const Icon(
+                                      Icons.account_circle,
+                                      size: 32),
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    GestureDetector(
+                                      onTap: login.isNotEmpty
+                                          ? () => widget.onUserTap(login)
+                                          : null,
+                                      child: Text(login,
+                                          style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: cs.primary)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Icon(stateIcon,
+                                        size: 14, color: stateColor),
+                                    const SizedBox(width: 4),
+                                    Text(stateLabel,
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: stateColor,
+                                            fontWeight: FontWeight.w600)),
+                                    const Spacer(),
+                                    Text(_fmtDate(submittedAt),
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: cs.onSurfaceVariant)),
+                                  ],
+                                ),
+                                if (body.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(body,
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: cs.onSurface,
+                                          height: 1.4)),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -1011,6 +1180,218 @@ class _ReviewsTab extends StatelessWidget {
   }
 
   static String _p(int v) => v.toString().padLeft(2, '0');
+}
+
+// ── Review submission sheet ───────────────────────────────────────────────────
+
+class _ReviewSheet extends StatefulWidget {
+  const _ReviewSheet({
+    required this.owner,
+    required this.repo,
+    required this.number,
+    required this.onPosted,
+  });
+  final String owner;
+  final String repo;
+  final int number;
+  final VoidCallback onPosted;
+
+  @override
+  State<_ReviewSheet> createState() => _ReviewSheetState();
+}
+
+class _ReviewSheetState extends State<_ReviewSheet> {
+  final _api = GitHubApiClient.instance;
+  final _ctrl = TextEditingController();
+  String _event = 'COMMENT'; // 'COMMENT' | 'APPROVE' | 'REQUEST_CHANGES'
+  bool _posting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_posting) return;
+    setState(() {
+      _posting = true;
+      _error = null;
+    });
+    final r = await _api.createPullRequestReview(
+      widget.owner,
+      widget.repo,
+      widget.number,
+      event: _event,
+      body: _ctrl.text.trim(),
+    );
+    if (!mounted) return;
+    if (r.isSuccess) {
+      widget.onPosted();
+    } else {
+      setState(() {
+        _posting = false;
+        _error = r.message ?? '提交失败，请稍后重试';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('提交审阅',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: cs.onSurface)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _ctrl,
+                minLines: 3,
+                maxLines: 8,
+                decoration: InputDecoration(
+                  hintText: '审阅说明（可选）',
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Event selector
+              _ReviewEventTile(
+                icon: Icons.comment_outlined,
+                label: '评论',
+                subtitle: '提交反馈，不明确批准或拒绝',
+                selected: _event == 'COMMENT',
+                color: cs.onSurfaceVariant,
+                onTap: () => setState(() => _event = 'COMMENT'),
+              ),
+              _ReviewEventTile(
+                icon: Icons.check_circle_outline,
+                label: '批准',
+                subtitle: '同意合并此 PR',
+                selected: _event == 'APPROVE',
+                color: const Color(0xFF1a7f37),
+                onTap: () => setState(() => _event = 'APPROVE'),
+              ),
+              _ReviewEventTile(
+                icon: Icons.rate_review_outlined,
+                label: '请求更改',
+                subtitle: '在合并前必须解决的问题',
+                selected: _event == 'REQUEST_CHANGES',
+                color: const Color(0xFFcf222e),
+                onTap: () => setState(() => _event = 'REQUEST_CHANGES'),
+              ),
+              // Inline error message
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: cs.errorContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                        fontSize: 13, color: cs.onErrorContainer),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _posting ? null : _submit,
+                  child: _posting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('提交'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviewEventTile extends StatelessWidget {
+  const _ReviewEventTile({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: selected ? color : cs.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: selected ? color : cs.onSurface)),
+                  Text(subtitle,
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: selected ? color : cs.onSurfaceVariant,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ── Stat chip ─────────────────────────────────────────────────────────────────
