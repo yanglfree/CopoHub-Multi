@@ -1542,14 +1542,20 @@ class _IssuesTabState extends State<_IssuesTab>
         state: _state == 'all' ? 'all' : _state,
         page: _page,
         perPage: 30,
-        type: _typeFilter == 'issues' ? 'issue' : null,
       );
     }
 
     if (!mounted) return;
 
     if (result.isSuccess) {
-      final items = result.data ?? [];
+      List<Map<String, dynamic>> items =
+          List<Map<String, dynamic>>.from(result.data ?? []);
+      // Client-side filter: when showing Issues only, exclude PRs
+      if (_typeFilter == 'issues') {
+        items = items
+            .where((e) => e['pull_request'] == null)
+            .toList();
+      }
       setState(() {
         _loading = false;
         if (refresh) {
@@ -1557,7 +1563,10 @@ class _IssuesTabState extends State<_IssuesTab>
         } else {
           _issues = [..._issues, ...items];
         }
-        _hasMore = items.length >= 30;
+        // For issues-only mode the filtered count may be < perPage even if more
+        // pages exist, so only stop paging when the raw page was short.
+        _hasMore = (result.data as List?)?.length != null &&
+            (result.data as List).length >= 30;
         _page++;
       });
     } else {

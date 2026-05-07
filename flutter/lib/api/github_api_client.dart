@@ -813,8 +813,6 @@ query($login: String!) {
     String direction = 'desc',
     int page = 1,
     int perPage = 30,
-    // Pass 'issue' to exclude pull requests from the result.
-    String? type,
   }) {
     final params = <String, dynamic>{
       'state': state,
@@ -824,7 +822,6 @@ query($login: String!) {
       'per_page': perPage,
     };
     if (labels != null) params['labels'] = labels;
-    if (type != null) params['type'] = type;
 
     return _get<List<Map<String, dynamic>>>(
       '/repos/$owner/$repo/issues',
