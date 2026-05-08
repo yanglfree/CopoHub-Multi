@@ -82,13 +82,13 @@ class _RepositoryPageState extends State<RepositoryPage>
       final state = _nestedScrollKey.currentState;
       if (state == null) return;
       final outer = state.outerController;
-      final inner = state.innerController;
-      if (!outer.hasClients || !inner.hasClients) return;
-      // jumpTo on innerController takes the combined unnested offset, so
-      // pass outer's current pixels — this keeps the header where it is
-      // (preserving the pinned-tab state) while resetting inner content
-      // to 0 so the freshly selected tab starts from the top.
-      inner.jumpTo(outer.position.pixels);
+      if (!outer.hasClients) return;
+      // Calling jumpTo on the OUTER controller goes through
+      // coordinator.jumpTo(unnestOffset(pixels, outerPos)) = coordinator.jumpTo(pixels),
+      // which keeps outer at its current position and resets ALL inner positions to 0.
+      // Using the inner controller would apply unnestOffset wrongly (value + outerMax),
+      // scrolling tab content up by outerMax pixels and causing blank screens.
+      outer.jumpTo(outer.position.pixels);
     });
   }
 
@@ -606,15 +606,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
         oldWidget.repo != widget.repo ||
         oldWidget.defaultBranch != widget.defaultBranch) {
       _loadReadme();
-      return;
     }
-    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final controller = PrimaryScrollController.maybeOf(context);
-      if (controller == null || !controller.hasClients) return;
-      controller.jumpTo(0);
-    });
   }
 
   Future<void> _loadReadme() async {
@@ -1097,13 +1089,6 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
   @override
   void didUpdateWidget(covariant _CodeTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final controller = PrimaryScrollController.maybeOf(context);
-      if (controller == null || !controller.hasClients) return;
-      controller.jumpTo(0);
-    });
   }
 
   Future<void> _loadContents(String path) async {
@@ -1506,13 +1491,6 @@ class _IssuesTabState extends State<_IssuesTab>
   @override
   void didUpdateWidget(covariant _IssuesTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final controller = PrimaryScrollController.maybeOf(context);
-      if (controller == null || !controller.hasClients) return;
-      controller.jumpTo(0);
-    });
   }
 
   Future<void> _load({bool refresh = false}) async {
@@ -1868,13 +1846,6 @@ class _CommitsTabState extends State<_CommitsTab>
   @override
   void didUpdateWidget(covariant _CommitsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final controller = PrimaryScrollController.maybeOf(context);
-      if (controller == null || !controller.hasClients) return;
-      controller.jumpTo(0);
-    });
   }
 
   Future<void> _load({bool refresh = false}) async {
@@ -2207,13 +2178,6 @@ class _ReleasesTabState extends State<_ReleasesTab>
   @override
   void didUpdateWidget(covariant _ReleasesTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.scrollResetVersion == widget.scrollResetVersion) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final controller = PrimaryScrollController.maybeOf(context);
-      if (controller == null || !controller.hasClients) return;
-      controller.jumpTo(0);
-    });
   }
 
   Future<void> _load() async {
