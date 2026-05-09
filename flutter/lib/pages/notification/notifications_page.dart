@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../models/notification.dart';
 import '../../l10n/app_localizations.dart';
 
@@ -209,7 +210,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Widget _buildBody(AppLocalizations l10n) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const NotificationListSkeleton();
     }
 
     final items = _filtered;
@@ -428,7 +429,17 @@ class _NotificationTile extends StatelessWidget {
                   Row(
                     children: [
                       _ReasonChip(reason: notification.reason),
-                      const Spacer(),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _timeAgo(notification.updatedAt),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                fontSize: 11,
+                              ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       if (unread)
                         GestureDetector(
                           onTap: onMarkRead,
@@ -445,6 +456,19 @@ class _NotificationTile extends StatelessWidget {
       ),
     );
   }
+}
+
+String _timeAgo(String isoDate) {
+  if (isoDate.isEmpty) return '';
+  final dt = DateTime.tryParse(isoDate);
+  if (dt == null) return '';
+  final diff = DateTime.now().difference(dt.toLocal());
+  if (diff.inMinutes < 1) return '刚刚';
+  if (diff.inHours < 1) return '${diff.inMinutes} 分钟前';
+  if (diff.inDays < 1) return '${diff.inHours} 小时前';
+  if (diff.inDays < 30) return '${diff.inDays} 天前';
+  if (diff.inDays < 365) return '${(diff.inDays / 30).floor()} 个月前';
+  return '${(diff.inDays / 365).floor()} 年前';
 }
 
 class _ReasonChip extends StatelessWidget {

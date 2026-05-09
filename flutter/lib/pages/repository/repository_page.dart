@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/markdown/markdown_scroll_fix.dart';
 import '../../components/repository/branch_tag_picker_bottom_sheet.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
@@ -48,6 +49,7 @@ class _RepositoryPageState extends State<RepositoryPage>
   late final List<int> _tabScrollResetVersions;
   int _activeTabIndex = 0;
   final GlobalKey<NestedScrollViewState> _nestedScrollKey = GlobalKey();
+  final GlobalKey _shareButtonKey = GlobalKey();
 
   @override
   void initState() {
@@ -215,15 +217,26 @@ class _RepositoryPageState extends State<RepositoryPage>
             ),
             actions: [
               IconButton(
+                key: _shareButtonKey,
                 icon: const Icon(Icons.share_outlined),
                 tooltip: '分享',
-                onPressed: () => ShareService.shareRepository(
-                  owner: widget.owner,
-                  repo: widget.repo,
-                  description: _repository?.description,
-                  stars: _repository?.stargazersCount ?? 0,
-                  language: _repository?.language,
-                ),
+                onPressed: () async {
+                  final box = _shareButtonKey.currentContext
+                      ?.findRenderObject() as RenderBox?;
+                  final origin = box != null
+                      ? box.localToGlobal(Offset.zero) & box.size
+                      : null;
+                  try {
+                    await ShareService.shareRepository(
+                      owner: widget.owner,
+                      repo: widget.repo,
+                      description: _repository?.description,
+                      stars: _repository?.stargazersCount ?? 0,
+                      language: _repository?.language,
+                      sharePositionOrigin: origin,
+                    );
+                  } catch (_) {}
+                },
               ),
               IconButton(
                 icon: Icon(
@@ -841,55 +854,58 @@ class _ReadmeTabState extends State<_ReadmeTab>
       tableColumnWidth: const IntrinsicColumnWidth(),
     );
 
-    Widget buildMarkdown(String data, MarkdownStyleSheet style) => MarkdownBody(
-          data: data,
-          // selectable:true wraps content in SelectionArea which swallows
-          // TapGestureRecognizer events — links become unclickable.
-          selectable: false,
-          styleSheet: style,
-          onTapLink: (text, href, title) {
-            if (href == null || href.isEmpty) return;
-            final resolved = _resolveReadmeUrl(href, forImage: false);
-            dispatchLinkAction(context, resolved);
-          },
-          sizedImageBuilder: (config) {
-            final resolved =
-                _resolveReadmeUrl(config.uri.toString(), forImage: true);
-            if (resolved.isEmpty || resolved == 'about:blank') {
-              return const SizedBox.shrink();
-            }
-            if (resolved.endsWith('.svg') ||
-                resolved.contains('badge') ||
-                resolved.contains('shields.io')) {
-              return const SizedBox.shrink();
-            }
-            final mq = MediaQuery.of(context);
-            final screenWidth = mq.size.width;
-            final dpr = mq.devicePixelRatio;
-            // Phone (< 600 dp): constrain to screen width.
-            // Pad / large screen: cap at 1080 logical px (or screen width if smaller).
-            const kPadBreakpoint = 600.0;
-            const kPadMaxWidth = 1080.0;
-            final isPhone = screenWidth < kPadBreakpoint;
-            final maxDisplayWidth =
-                isPhone ? screenWidth : kPadMaxWidth.clamp(0.0, screenWidth);
-            // Cache up to 2× logical px for retina clarity.
-            final memWidth = (maxDisplayWidth * dpr * 2).round();
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxDisplayWidth),
-                child: CachedNetworkImage(
-                  imageUrl: resolved,
-                  fit: BoxFit.fitWidth,
-                  width: maxDisplayWidth,
-                  memCacheWidth: memWidth,
-                  placeholder: (_, __) => const SizedBox(height: 1),
-                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+    Widget buildMarkdown(String data, MarkdownStyleSheet style) =>
+        MarkdownScrollFix(
+          child: MarkdownBody(
+            data: data,
+            // selectable:true wraps content in SelectionArea which swallows
+            // TapGestureRecognizer events — links become unclickable.
+            selectable: false,
+            styleSheet: style,
+            onTapLink: (text, href, title) {
+              if (href == null || href.isEmpty) return;
+              final resolved = _resolveReadmeUrl(href, forImage: false);
+              dispatchLinkAction(context, resolved);
+            },
+            sizedImageBuilder: (config) {
+              final resolved =
+                  _resolveReadmeUrl(config.uri.toString(), forImage: true);
+              if (resolved.isEmpty || resolved == 'about:blank') {
+                return const SizedBox.shrink();
+              }
+              if (resolved.endsWith('.svg') ||
+                  resolved.contains('badge') ||
+                  resolved.contains('shields.io')) {
+                return const SizedBox.shrink();
+              }
+              final mq = MediaQuery.of(context);
+              final screenWidth = mq.size.width;
+              final dpr = mq.devicePixelRatio;
+              // Phone (< 600 dp): constrain to screen width.
+              // Pad / large screen: cap at 1080 logical px (or screen width if smaller).
+              const kPadBreakpoint = 600.0;
+              const kPadMaxWidth = 1080.0;
+              final isPhone = screenWidth < kPadBreakpoint;
+              final maxDisplayWidth =
+                  isPhone ? screenWidth : kPadMaxWidth.clamp(0.0, screenWidth);
+              // Cache up to 2× logical px for retina clarity.
+              final memWidth = (maxDisplayWidth * dpr * 2).round();
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxDisplayWidth),
+                  child: CachedNetworkImage(
+                    imageUrl: resolved,
+                    fit: BoxFit.fitWidth,
+                    width: maxDisplayWidth,
+                    memCacheWidth: memWidth,
+                    placeholder: (_, __) => const SizedBox(height: 1),
+                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
 
     return SingleChildScrollView(
@@ -1354,7 +1370,22 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error.isNotEmpty
-                  ? Center(child: Text(_error))
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_error, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () => _loadContents(
+                              _pathStack.isEmpty ? '' : _pathStack.last.path,
+                            ),
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    )
                   : _items.isEmpty
                       ? Center(child: Text(l10n.noFiles))
                       : ListView.separated(
@@ -1479,6 +1510,9 @@ class _IssuesTabState extends State<_IssuesTab>
   String _typeFilter = 'all';
   String _error = '';
 
+  int? _issueCount;
+  int? _prCount;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -1486,11 +1520,23 @@ class _IssuesTabState extends State<_IssuesTab>
   void initState() {
     super.initState();
     _load();
+    _loadCounts();
   }
 
   @override
   void didUpdateWidget(covariant _IssuesTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+  }
+
+  Future<void> _loadCounts() async {
+    final result = await _api.getIssueCounts(widget.owner, widget.repo);
+    if (!mounted) return;
+    if (result.isSuccess) {
+      setState(() {
+        _issueCount = result.data!['issue_count'];
+        _prCount = result.data!['pr_count'];
+      });
+    }
   }
 
   Future<void> _load({bool refresh = false}) async {
@@ -1579,74 +1625,93 @@ class _IssuesTabState extends State<_IssuesTab>
   Widget build(BuildContext context) {
     super.build(context);
     final l10n = AppLocalizations.of(context);
+    final cs = Theme.of(context).colorScheme;
+
+    final totalCount = (_issueCount != null || _prCount != null)
+        ? (_issueCount ?? 0) + (_prCount ?? 0)
+        : null;
 
     return Column(
       children: [
-        // ── Type filter chips ──────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+        // ── Filter toolbar ─────────────────────────────────────────────────
+        Container(
+          height: 44,
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: cs.outlineVariant, width: 0.5),
+            ),
+          ),
           child: Row(
             children: [
-              _FilterChip(
-                label: l10n.filterAll,
-                selected: _typeFilter == 'all',
-                onTap: () => _switchType('all'),
+              Expanded(
+                child: Row(
+                  children: [
+                    _IssueTypeTab(
+                      label: l10n.filterAll,
+                      count: totalCount,
+                      selected: _typeFilter == 'all',
+                      onTap: () => _switchType('all'),
+                    ),
+                    _IssueTypeTab(
+                      label: 'Issues',
+                      count: _issueCount,
+                      selected: _typeFilter == 'issues',
+                      onTap: () => _switchType('issues'),
+                    ),
+                    _IssueTypeTab(
+                      label: 'PRs',
+                      count: _prCount,
+                      selected: _typeFilter == 'pulls',
+                      onTap: () => _switchType('pulls'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 8),
-              _FilterChip(
-                label: 'Issues',
-                selected: _typeFilter == 'issues',
-                onTap: () => _switchType('issues'),
+              _StateFilterButton(
+                state: _state,
+                onChanged: _switchState,
               ),
-              const SizedBox(width: 8),
-              _FilterChip(
-                label: 'PRs',
-                selected: _typeFilter == 'pulls',
-                onTap: () => _switchType('pulls'),
-              ),
-              if (_typeFilter == 'pulls') ...[
-                const Spacer(),
+              if (_typeFilter == 'pulls')
                 IconButton(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(Icons.add, size: 20),
                   tooltip: '创建 Pull Request',
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   onPressed: () => context.push(
                       '/pr/new/${widget.owner}/${widget.repo}'),
                 ),
-              ],
+              if (_typeFilter == 'issues')
+                IconButton(
+                  icon: const Icon(Icons.add, size: 20),
+                  tooltip: l10n.createIssue,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  onPressed: () async {
+                    await context.push(
+                        '/issue/new/${widget.owner}/${widget.repo}');
+                    if (mounted) _load(refresh: true);
+                  },
+                ),
             ],
           ),
         ),
-        // ── State filter chips ────────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: Row(
-            children: [
-              _FilterChip(
-                label: l10n.filterAll,
-                selected: _state == 'all',
-                onTap: () => _switchState('all'),
-              ),
-              const SizedBox(width: 8),
-              _FilterChip(
-                label: l10n.filterOpen,
-                selected: _state == 'open',
-                onTap: () => _switchState('open'),
-              ),
-              const SizedBox(width: 8),
-              _FilterChip(
-                label: l10n.filterClosed,
-                selected: _state == 'closed',
-                onTap: () => _switchState('closed'),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
+        // ── List ───────────────────────────────────────────────────────────
         Expanded(
           child: _loading && _issues.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : _error.isNotEmpty && _issues.isEmpty
-                  ? Center(child: Text(_error))
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_error, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () => _load(refresh: true),
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    )
                   : _issues.isEmpty
                       ? Center(child: Text(l10n.noIssues))
                       : RefreshIndicator(
@@ -1693,38 +1758,171 @@ class _IssuesTabState extends State<_IssuesTab>
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
+// ── Issue type tab (underline style) ─────────────────────────────────────────
+
+class _IssueTypeTab extends StatelessWidget {
+  const _IssueTypeTab({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.count,
   });
   final String label;
+  final int? count;
   final bool selected;
   final VoidCallback onTap;
+
+  String _formatCount(int n) {
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(n < 10000 ? 1 : 0)}k';
+    return '$n';
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
-          color: selected ? cs.primary : cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? cs.primary : Colors.transparent,
+              width: 2,
+            ),
           ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                color: selected ? cs.onSurface : cs.onSurfaceVariant,
+              ),
+            ),
+            if (count != null) ...[
+              const SizedBox(width: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? cs.primaryContainer
+                      : cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _formatCount(count!),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: selected
+                        ? cs.onPrimaryContainer
+                        : cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
+  }
+}
+
+// ── State filter dropdown chip ────────────────────────────────────────────────
+
+class _StateFilterButton extends StatelessWidget {
+  const _StateFilterButton({
+    required this.state,
+    required this.onChanged,
+  });
+  final String state;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+
+    final String label;
+    final Color dotColor;
+    if (state == 'open') {
+      label = l10n.filterOpen;
+      dotColor = Colors.green.shade600;
+    } else if (state == 'closed') {
+      label = l10n.filterClosed;
+      dotColor = Colors.purple.shade600;
+    } else {
+      label = l10n.filterAll;
+      dotColor = cs.onSurfaceVariant;
+    }
+
+    return GestureDetector(
+      onTap: () => _showMenu(context, l10n),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        margin: const EdgeInsets.only(right: 2),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(width: 1),
+            Icon(Icons.keyboard_arrow_down_rounded,
+                size: 13, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMenu(BuildContext context, AppLocalizations l10n) {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final offset = renderBox.localToGlobal(
+      Offset(0, renderBox.size.height + 4),
+      ancestor: overlay,
+    );
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx - 40,
+        offset.dy,
+        overlay.size.width - offset.dx - renderBox.size.width + 40,
+        0,
+      ),
+      items: [
+        PopupMenuItem(value: 'open', child: Text(l10n.filterOpen)),
+        PopupMenuItem(value: 'closed', child: Text(l10n.filterClosed)),
+        PopupMenuItem(value: 'all', child: Text(l10n.filterAll)),
+      ],
+    ).then((value) {
+      if (value != null) onChanged(value);
+    });
   }
 }
 
@@ -2012,7 +2210,20 @@ class _CommitsTabState extends State<_CommitsTab>
           child: _loading && _commits.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : _error.isNotEmpty && _commits.isEmpty
-                  ? Center(child: Text(_error))
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_error, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () => _load(refresh: true),
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    )
                   : _commits.isEmpty
                       ? Center(child: Text(l10n.noCommits))
                       : RefreshIndicator(
@@ -2216,7 +2427,22 @@ class _ReleasesTabState extends State<_ReleasesTab>
     if (_loading && _releases.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error.isNotEmpty) return Center(child: Text(_error));
+    if (_error.isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
     if (_releases.isEmpty) {
       return Center(
         child: Column(
@@ -2372,9 +2598,13 @@ class _ReleaseTileState extends State<_ReleaseTile> {
                 Row(
                   children: [
                     Expanded(
-                      child: _ReleaseMeta(
-                        icon: Icons.person_outline,
-                        text: authorName,
+                      child: GestureDetector(
+                        onTap: () => context.push('/user/$authorName'),
+                        child: _ReleaseMeta(
+                          icon: Icons.person_outline,
+                          text: authorName,
+                          tappable: true,
+                        ),
                       ),
                     ),
                     _ReleaseMeta(
@@ -2468,12 +2698,25 @@ class _ReleaseTileState extends State<_ReleaseTile> {
   }
 
   static String _bodyPreview(String body) {
-    final lines = body
+    var text = body
+        .replaceAll(RegExp(r'!\[[^\]]*\]\([^\)]*\)'), '') // images
+        .replaceAllMapped(
+            RegExp(r'\[([^\]]+)\]\([^\)]+\)'), (m) => m[1]!) // links → text
+        .replaceAll(RegExp(r'```[\s\S]*?```'), '') // fenced code blocks
+        .replaceAllMapped(RegExp(r'`([^`]+)`'), (m) => m[1]!) // inline code
+        .replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '') // headings
+        .replaceAllMapped(RegExp(r'\*\*([^*]+)\*\*'), (m) => m[1]!) // bold **
+        .replaceAllMapped(RegExp(r'__([^_]+)__'), (m) => m[1]!) // bold __
+        .replaceAllMapped(RegExp(r'\*([^*\n]+)\*'), (m) => m[1]!) // italic *
+        .replaceAll(RegExp(r'^>\s*', multiLine: true), '') // blockquotes
+        .replaceAll(RegExp(r'^[-*+]\s+', multiLine: true), '') // unordered lists
+        .replaceAll(RegExp(r'^\d+\.\s+', multiLine: true), ''); // ordered lists
+    final lines = text
         .split('\n')
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
         .take(3)
-        .join('\n');
+        .join(' · ');
     return lines.isEmpty ? body : lines;
   }
 }
@@ -2505,17 +2748,23 @@ class _ReleaseBadge extends StatelessWidget {
 }
 
 class _ReleaseMeta extends StatelessWidget {
-  const _ReleaseMeta({required this.icon, required this.text});
+  const _ReleaseMeta({
+    required this.icon,
+    required this.text,
+    this.tappable = false,
+  });
   final IconData icon;
   final String text;
+  final bool tappable;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final color = tappable ? cs.primary : cs.onSurfaceVariant;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: cs.onSurfaceVariant),
+        Icon(icon, size: 16, color: color),
         const SizedBox(width: 5),
         Flexible(
           child: Text(
@@ -2524,7 +2773,9 @@ class _ReleaseMeta extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 13,
-              color: cs.onSurfaceVariant,
+              color: color,
+              decoration: tappable ? TextDecoration.underline : null,
+              decorationColor: color,
             ),
           ),
         ),
@@ -2558,14 +2809,16 @@ class _ReleaseDetails extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (body.isNotEmpty)
-            MarkdownBody(
-              data: body,
-              selectable: true,
-              onTapLink: (text, href, title) {
-                if (href != null) {
-                  _openUrl(href);
-                }
-              },
+            MarkdownScrollFix(
+              child: MarkdownBody(
+                data: body,
+                selectable: true,
+                onTapLink: (text, href, title) {
+                  if (href != null) {
+                    _openUrl(href);
+                  }
+                },
+              ),
             )
           else
             Text(

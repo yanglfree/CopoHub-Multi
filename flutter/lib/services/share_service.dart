@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:share_plus/share_plus.dart';
 
 /// Cross-platform share integration using share_plus.
@@ -15,6 +16,7 @@ class ShareService {
     String? description,
     int stars = 0,
     String? language,
+    Rect? sharePositionOrigin,
   }) async {
     final url = 'https://github.com/$owner/$repo';
     final sb = StringBuffer();
@@ -27,7 +29,11 @@ class ShareService {
     }
     if (stars > 0) sb.write(' · ⭐ $stars');
     sb.write('\n$url');
-    await Share.share(sb.toString(), subject: '$owner/$repo on GitHub');
+    await Share.share(
+      sb.toString(),
+      subject: '$owner/$repo on GitHub',
+      sharePositionOrigin: sharePositionOrigin,
+    );
   }
 
   // ── User profile ────────────────────────────────────────────────────────────
@@ -36,19 +42,32 @@ class ShareService {
   static Future<void> shareProfile({
     required String username,
     String? bio,
+    Rect? sharePositionOrigin,
   }) async {
     final url = 'https://github.com/$username';
     final sb = StringBuffer();
     sb.write('@$username');
     if (bio != null && bio.isNotEmpty) sb.write(' — $bio');
     sb.write('\n$url');
-    await Share.share(sb.toString(), subject: '@$username on GitHub');
+    await Share.share(
+      sb.toString(),
+      subject: '@$username on GitHub',
+      sharePositionOrigin: sharePositionOrigin,
+    );
   }
 
   // ── Generic ─────────────────────────────────────────────────────────────────
 
   /// Shares arbitrary text.
-  static Future<void> shareText(String text, {String? subject}) async {
-    await Share.share(text, subject: subject);
+  static Future<void> shareText(
+    String text, {
+    String? subject,
+    Rect? sharePositionOrigin,
+  }) async {
+    await Share.share(
+      text,
+      subject: subject,
+      sharePositionOrigin: sharePositionOrigin,
+    );
   }
 }

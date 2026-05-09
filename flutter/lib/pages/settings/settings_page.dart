@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../api/github_api_client.dart';
 import '../../services/auth_service.dart';
 import '../../services/theme_service.dart';
@@ -87,6 +88,14 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const Divider(height: 1, indent: 16),
           ListTile(
+            leading: const Icon(Icons.feedback_outlined),
+            title: const Text('用户反馈'),
+            subtitle: const Text('通过邮箱发送您的意见和建议'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _openFeedbackEmail(context),
+          ),
+          const Divider(height: 1, indent: 16),
+          ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),
             title: const Text('隐私政策与协议'),
             trailing: const Icon(Icons.chevron_right),
@@ -107,6 +116,27 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _openFeedbackEmail(BuildContext context) async {
+    const version = Constants.appVersion;
+    final login = AuthService.instance.currentUser?.login ?? 'Unknown';
+    final subject = Uri.encodeComponent('CopoHub 用户反馈');
+    final body = Uri.encodeComponent(
+      'App 版本：$version\n'
+      'GitHub 账号：$login\n\n'
+      '问题描述：\n（请描述您遇到的问题或建议）\n\n'
+      '复现步骤：\n1. \n2. \n3. \n',
+    );
+    final uri = Uri.parse(
+      'mailto:youdroid2048@gmail.com?subject=$subject&body=$body',
+    );
+    final launched = await launchUrl(uri);
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未找到邮件应用，请手动联系 youdroid2048@gmail.com')),
+      );
+    }
   }
 
   Future<void> _clearCache(BuildContext context) async {

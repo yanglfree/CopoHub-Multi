@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "CopoHub"
+    },
+    {
+      "name": "permission_copyboard_reason",
+      "value": "用于粘贴复制的 GitHub 访问令牌并检测 GitHub 仓库链接。"
     }
   ]
 }

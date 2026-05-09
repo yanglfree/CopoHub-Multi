@@ -350,7 +350,7 @@ class _MemberGatePageState extends State<MemberGatePage> {
                                   ),
                                 ),
                               ),
-                              const TextSpan(text: ' 和 '),
+                              const TextSpan(text: '、'),
                               WidgetSpan(
                                 child: GestureDetector(
                                   onTap: () => showDialog(
@@ -360,6 +360,23 @@ class _MemberGatePageState extends State<MemberGatePage> {
                                   ),
                                   child: Text(
                                     '服务协议',
+                                    style: TextStyle(
+                                        color: cs.primary,
+                                        fontSize: 12,
+                                        decoration: TextDecoration.underline),
+                                  ),
+                                ),
+                              ),
+                              const TextSpan(text: ' 和 '),
+                              WidgetSpan(
+                                child: GestureDetector(
+                                  onTap: () => showDialog(
+                                    context: context,
+                                    builder: (_) => const PolicyDialog(
+                                        initialTab: PolicyTab.terms),
+                                  ),
+                                  child: Text(
+                                    '自动续费服务协议',
                                     style: TextStyle(
                                         color: cs.primary,
                                         fontSize: 12,
@@ -381,7 +398,7 @@ class _MemberGatePageState extends State<MemberGatePage> {
                   width: double.infinity,
                   height: 48,
                   child: FilledButton(
-                    onPressed: _loading ? null : _subscribe,
+                    onPressed: (_loading || !_agreed) ? null : _subscribe,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF1A237E),
                       shape: RoundedRectangleBorder(
@@ -403,14 +420,33 @@ class _MemberGatePageState extends State<MemberGatePage> {
                           ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Center(
-                  child: Text(
-                    '随时可取消 · 安全支付',
-                    style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                  child: Column(
+                    children: [
+                      Text(
+                        '月会员和年会员在订阅到期前 24 小时自动续费，',
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                      ),
+                      Text(
+                        '可随时在系统设置中取消订阅。',
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '客服邮箱：youdroid2048@gmail.com',
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 16),
 
                 // Restore button
                 Center(

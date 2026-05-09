@@ -34,6 +34,16 @@ String friendlyApiErrorMessage(
     return fallback;
   }
   if (lower.startsWith('graphql error')) {
+    if (_containsAny(lower, [
+      'required scopes',
+      'not been granted',
+      'insufficient_scopes',
+      'resource not accessible',
+      'must be authenticated',
+      'unauthorized',
+    ])) {
+      return 'Token 权限不足，请退出登录后重新登录以授予完整权限';
+    }
     return fallback;
   }
 

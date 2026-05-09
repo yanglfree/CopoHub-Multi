@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import '../../components/markdown/markdown_scroll_fix.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
 import '../../utils/link_utils.dart';
@@ -33,7 +34,9 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
   bool _commentsLoading = false;
 
   final _commentCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
   bool _commentPosting = false;
+  bool _actionLoading = false;
 
   @override
   void initState() {
@@ -45,6 +48,7 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
   @override
   void dispose() {
     _commentCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -83,6 +87,29 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
     }
   }
 
+  Future<void> _toggleIssueState() async {
+    final issue = _issue;
+    if (issue == null || _actionLoading) return;
+    final isOpen = (issue['state'] as String? ?? 'open') == 'open';
+    setState(() => _actionLoading = true);
+    final r = await _api.updateIssue(
+      widget.owner, widget.repo, widget.number,
+      state: isOpen ? 'closed' : 'open',
+    );
+    if (!mounted) return;
+    setState(() => _actionLoading = false);
+    if (r.isSuccess) {
+      setState(() => _issue = r.data);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(isOpen ? 'Issue 已关闭' : 'Issue 已重新开启')),
+      );
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('操作失败: ${r.message ?? ''}')),
+      );
+    }
+  }
+
   Future<void> _postComment() async {
     final body = _commentCtrl.text.trim();
     if (body.isEmpty || _commentPosting) return;
@@ -93,7 +120,19 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
     setState(() => _commentPosting = false);
     if (r.isSuccess) {
       _commentCtrl.clear();
-      _loadComments();
+      FocusScope.of(context).unfocus();
+      await _loadComments();
+      if (mounted && _scrollCtrl.hasClients) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollCtrl.hasClients) {
+            _scrollCtrl.animateTo(
+              _scrollCtrl.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
     } else {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(content: Text('评论失败: ${r.message ?? ''}')),
@@ -114,6 +153,28 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
           isPR ? 'Pull Request #${widget.number}' : 'Issue #${widget.number}',
           style: const TextStyle(fontSize: 15),
         ),
+        actions: [
+          if (!_issueLoading && _issueError.isEmpty && !isPR)
+            _actionLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : IconButton(
+                    onPressed: _toggleIssueState,
+                    tooltip: isOpen ? '关闭 Issue' : '重新开启',
+                    icon: Icon(
+                      isOpen
+                          ? Icons.do_not_disturb_on_outlined
+                          : Icons.replay_outlined,
+                      color: isOpen ? Theme.of(context).colorScheme.error : const Color(0xFF1a7f37),
+                    ),
+                  ),
+        ],
       ),
       body: Column(
         children: [
@@ -127,6 +188,7 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
                           await Future.wait([_loadIssue(), _loadComments()]);
                         },
                         child: ListView(
+                          controller: _scrollCtrl,
                           children: [
                             // ── Issue header ─────────────────────────────────
                             _IssueHeader(
@@ -183,10 +245,10 @@ class _IssueDetailPageState extends State<IssueDetailPage> {
                 left: 12,
                 right: 12,
                 top: 8,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+                bottom: MediaQuery.of(context).padding.bottom + 8,
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
                     child: TextField(
@@ -591,26 +653,28 @@ class _GithubMarkdown extends StatelessWidget {
       ),
     );
 
-    return MarkdownBody(
-      data: body,
-      selectable: false,
-      styleSheet: style,
-      onTapLink: (text, href, title) {
-        if (href == null || href.isEmpty) return;
-        dispatchLinkAction(context, href);
-      },
-      imageBuilder: (uri, title, alt) {
-        final src = uri.toString();
-        if (src.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Image.network(
-            src,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-          ),
-        );
-      },
+    return MarkdownScrollFix(
+      child: MarkdownBody(
+        data: body,
+        selectable: false,
+        styleSheet: style,
+        onTapLink: (text, href, title) {
+          if (href == null || href.isEmpty) return;
+          dispatchLinkAction(context, href);
+        },
+        imageBuilder: (uri, title, alt) {
+          final src = uri.toString();
+          if (src.isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Image.network(
+              src,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          );
+        },
+      ),
     );
   }
 }

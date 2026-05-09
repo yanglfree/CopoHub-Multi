@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../components/dialogs/pat_help_dialog.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../components/policy/policy_dialog.dart';
 import '../../services/auth_service.dart';
@@ -613,7 +613,7 @@ class _LoginPageState extends State<LoginPage> {
         _FooterLink(
           text: l10n.howToGetPAT,
           fontSize: 16,
-          onTap: _openTokenHelp,
+          onTap: _showTokenHelp,
         ),
         const SizedBox(height: 10),
         Text(
@@ -642,10 +642,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Future<void> _openTokenHelp() async {
-    await launchUrl(
-      Uri.parse('https://github.com/settings/tokens'),
-      mode: LaunchMode.externalApplication,
+  void _showTokenHelp() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => const PATHelpDialog(),
     );
   }
 }

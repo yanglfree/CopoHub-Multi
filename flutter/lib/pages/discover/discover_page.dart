@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
-import '../../models/repository.dart';
+import '../../components/repository/repo_context_menu.dart';
 import '../../components/skeleton/repo_list_skeleton.dart';
+import '../../models/repository.dart';
 import '../../utils/constants.dart';
 import '../../l10n/app_localizations.dart';
 
@@ -210,6 +211,7 @@ class _DiscoverRepoCard extends StatelessWidget {
     return InkWell(
       onTap: () => context.push('/repository/${repo.owner?.login}/${repo.name}',
           extra: repo),
+      onLongPress: () => showRepoContextMenu(context, repo),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         child: Column(

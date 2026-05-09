@@ -5,6 +5,7 @@ import '../../providers/theme_provider.dart';
 import '../../services/contribution_service.dart';
 import '../../utils/constants.dart';
 import '../../l10n/app_localizations.dart';
+import '../skeleton/skeleton.dart';
 
 /// GitHub-style contribution heatmap calendar.
 class ContributionCalendar extends ConsumerStatefulWidget {
@@ -156,10 +157,7 @@ class _ContributionCalendarState extends ConsumerState<ContributionCalendar> {
 
         // ── Body: calendar + year tabs ───────────────────────────────────────
         if (_loading)
-          const SizedBox(
-            height: 100,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          )
+          const _HeatmapSkeleton()
         else if (_error.isNotEmpty)
           SizedBox(
             height: 100,
@@ -169,24 +167,48 @@ class _ContributionCalendarState extends ConsumerState<ContributionCalendar> {
             ),
           )
         else if (_summary != null)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _CalendarGrid(
-                  summary: _summary!,
-                  colors: colors,
-                ),
-              ),
-              const SizedBox(width: 10),
-              _YearTabs(
-                years: _availableYears,
-                selectedYear: _year,
-                isLastYear: _isLastYear,
-                height: _CalendarGrid.totalHeight,
-                onTap: _selectYear,
-              ),
-            ],
+          // LayoutBuilder mirrors _CalendarGrid's cell-size formula so that
+          // _YearTabs gets the correct height even when cells are scaled up.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const yearTabAndGap = 64.0; // 54 (tab) + 10 (gap)
+              const weekdayAreaW = 24.0;  // ~20 px labels + 4 px SizedBox
+              const cellGap = 2.0;
+              const minCell = 10.0;
+              const maxCell = 18.0;
+              final numWeeks = _summary!.weeks.length;
+
+              var cellSize = minCell;
+              if (numWeeks > 0) {
+                final gridAvailable = constraints.maxWidth -
+                    yearTabAndGap -
+                    weekdayAreaW;
+                final computed = gridAvailable / numWeeks - cellGap;
+                if (computed > minCell) {
+                  cellSize = computed.clamp(minCell, maxCell);
+                }
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _CalendarGrid(
+                      summary: _summary!,
+                      colors: colors,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _YearTabs(
+                    years: _availableYears,
+                    selectedYear: _year,
+                    isLastYear: _isLastYear,
+                    height: _CalendarGrid.totalHeightForCellSize(cellSize),
+                    onTap: _selectYear,
+                  ),
+                ],
+              );
+            },
           ),
 
         // ── Legend ──────────────────────────────────────────────────────────
@@ -383,39 +405,65 @@ class _CalendarGrid extends StatelessWidget {
   final ContributionSummary summary;
   final List<Color> colors;
 
-  static const _cellSize = 10.0;
+  static const _minCellSize = 10.0;
+  static const _maxCellSize = 18.0;
   static const _cellGap = 2.0;
-  static const _rowH = _cellSize + _cellGap; // 12 px
   static const _monthLabelH = 16.0;
-  static const totalHeight = _monthLabelH + 7 * _rowH;
+  // Approximate width consumed by weekday labels column + the SizedBox(4) gap.
+  static const _weekdayAreaW = 24.0;
+
+  /// Calendar height for a given cell size (used by parent to size _YearTabs).
+  static double totalHeightForCellSize(double cellSize) =>
+      _monthLabelH + 7 * (cellSize + _cellGap);
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Fixed weekday labels on the left (do not scroll).
-        const _WeekdayLabels(
-          cellSize: _cellSize,
-          monthLabelH: _monthLabelH,
+    // LayoutBuilder gives us the exact width of this Expanded slot so we can
+    // compute the optimal cell size in one place (weekday labels + grid row).
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final numWeeks = summary.weeks.length;
+        var cellSize = _minCellSize;
+        if (numWeeks > 0) {
+          final gridAvailable = constraints.maxWidth - _weekdayAreaW;
+          final computed = gridAvailable / numWeeks - _cellGap;
+          if (computed > _minCellSize) {
+            cellSize = computed.clamp(_minCellSize, _maxCellSize);
+          }
+        }
+
+        final grid = _GridWithMonths(
+          weeks: summary.weeks,
+          colors: colors,
+          cellSize: cellSize,
           cellGap: _cellGap,
-        ),
-        const SizedBox(width: 4),
-        // Horizontally scrollable: month labels + cell grid.
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: _GridWithMonths(
-              weeks: summary.weeks,
-              colors: colors,
-              cellSize: _cellSize,
-              cellGap: _cellGap,
+          monthLabelH: _monthLabelH,
+          filterYear: summary.isLastYear ? null : summary.year,
+        );
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Weekday labels rendered at the actual (possibly scaled) cell size.
+            _WeekdayLabels(
+              cellSize: cellSize,
               monthLabelH: _monthLabelH,
-              filterYear: summary.isLastYear ? null : summary.year,
+              cellGap: _cellGap,
             ),
-          ),
-        ),
-      ],
+            const SizedBox(width: 4),
+            Expanded(
+              // On small screens the grid is wider than the container –
+              // keep horizontal scrolling.  On large screens it fills exactly.
+              child: cellSize <= _minCellSize
+                  ? SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: grid,
+                    )
+                  : grid,
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -674,6 +722,62 @@ class _Legend extends StatelessWidget {
         const SizedBox(width: 2),
         Text(l10n.more, style: labelStyle),
       ],
+    );
+  }
+}
+
+class _HeatmapSkeleton extends StatelessWidget {
+  const _HeatmapSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+                for (int i = 0; i < 7; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Row(
+                      children: [
+                        for (int j = 0; j < 20; j++)
+                          Container(
+                            width: 10,
+                            height: 10,
+                            margin: const EdgeInsets.only(right: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            children: List.generate(
+              5,
+              (index) => Container(
+                width: 54,
+                height: 20,
+                margin: const EdgeInsets.only(bottom: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

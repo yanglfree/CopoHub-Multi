@@ -8,7 +8,9 @@ import '../../components/daily/daily_report_view.dart';
 import '../../models/copohub_curated_item.dart';
 import '../../models/deduplicated_repo_item.dart';
 import '../../models/trending_item.dart';
+import '../../components/repository/repo_context_menu.dart';
 import '../../services/pro_member_service.dart';
+import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../utils/constants.dart';
 
 /// "精选" tab page — mirrors HarmonyOS DailyView.
@@ -387,35 +389,28 @@ class _FeaturedPageState extends State<FeaturedPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── Custom header ─────────────────────────────────────────────
-            Container(
-              color: cs.surface,
-              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-              child: Row(
-                children: [
-                  Text(
-                    '精选',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: Icon(Icons.refresh, color: cs.primary),
-                    onPressed: _refresh,
-                    tooltip: '刷新',
-                  ),
-                ],
-              ),
-            ),
-            // ── Top tab bar ───────────────────────────────────────────────
-            _TopTabBar(
-              selectedIndex: _topTab,
-              onTap: _switchTopTab,
-            ),
+      appBar: AppBar(
+        title: const Text(
+          '精选',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh, color: cs.primary),
+            onPressed: _refresh,
+            tooltip: '刷新',
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(44),
+          child: _TopTabBar(
+            selectedIndex: _topTab,
+            onTap: _switchTopTab,
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
             // ── Content ───────────────────────────────────────────────────
             Expanded(
               child: _topTab == 0
@@ -486,7 +481,6 @@ class _FeaturedPageState extends State<FeaturedPage> {
             ),
           ],
         ),
-      ),
     );
   }
 }
@@ -1034,7 +1028,7 @@ class _TrendingView extends StatelessWidget {
         ),
         Expanded(
           child: loading && trending.isEmpty
-              ? const Center(child: CircularProgressIndicator())
+              ? const TrendingListSkeleton()
               : error.isNotEmpty && trending.isEmpty
                   ? _ErrorRetry(message: error, onRetry: onRetry)
                   : trending.isEmpty
@@ -1154,6 +1148,11 @@ class _TrendingCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: () => context.push('/repository/${item.owner}/${item.name}'),
+      onLongPress: () => showRepoContextMenuFor(
+        context,
+        owner: item.owner,
+        name: item.name,
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -1462,7 +1461,7 @@ class _FrequentViewState extends State<_FrequentView> {
           ),
         Expanded(
           child: widget.loading && widget.items.isEmpty
-              ? const Center(child: CircularProgressIndicator())
+              ? const TrendingListSkeleton()
               : widget.error.isNotEmpty && widget.items.isEmpty
                   ? _ErrorRetry(message: widget.error, onRetry: widget.onRetry)
                   : filtered.isEmpty
@@ -1555,6 +1554,11 @@ class _FrequentCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: () => context.push('/repository/${item.owner}/${item.name}'),
+      onLongPress: () => showRepoContextMenuFor(
+        context,
+        owner: item.owner,
+        name: item.name,
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -1724,7 +1728,7 @@ class _CopoHubTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Center(child: CircularProgressIndicator());
+    if (loading) return const CuratedListSkeleton();
     if (error.isNotEmpty) return _ErrorRetry(message: error, onRetry: onRetry);
     if (items.isEmpty) return const _Empty(message: '暂无精选项目');
 

@@ -25,6 +25,7 @@ import '../pages/member/member_gate_page.dart';
 import '../pages/user_profile/user_repositories_page.dart';
 import '../pages/create_repo/create_repo_page.dart';
 import '../pages/issue/issue_detail_page.dart';
+import '../pages/issue/create_issue_page.dart';
 import '../pages/pull_request/pr_detail_page.dart';
 import '../pages/pull_request/create_pr_page.dart';
 import '../pages/commit/commit_detail_page.dart';
@@ -57,6 +58,7 @@ class AppRoutes {
 
   // Issue
   static const issue = '/issue/:owner/:repo/:number';
+  static const createIssue = '/issue/new/:owner/:repo';
 
   // Pull Request
   static const pullRequest = '/pr/:owner/:repo/:number';
@@ -93,9 +95,12 @@ class AppRoutes {
 
 // ── Router provider ───────────────────────────────────────────────────────────
 
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   final listenable = ref.read(authServiceProvider);
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutes.splash,
     refreshListenable: listenable,
     redirect: (context, state) {
@@ -194,6 +199,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           owner: state.pathParameters['owner']!,
           repo: state.pathParameters['repo']!,
           sha: state.pathParameters['sha']!,
+        ),
+      ),
+
+      // ── Create Issue ────────────────────────────────────────────────────────
+      GoRoute(
+        path: AppRoutes.createIssue,
+        builder: (_, state) => CreateIssuePage(
+          owner: state.pathParameters['owner']!,
+          repo: state.pathParameters['repo']!,
         ),
       ),
 

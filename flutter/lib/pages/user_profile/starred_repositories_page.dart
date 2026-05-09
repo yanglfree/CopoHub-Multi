@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/repository/repo_context_menu.dart';
 import '../../models/repository.dart';
 import '../../utils/constants.dart';
 
@@ -125,6 +126,7 @@ class _RepoTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
+      onLongPress: () => showRepoContextMenu(context, repo),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(

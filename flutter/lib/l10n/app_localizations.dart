@@ -106,7 +106,7 @@ class AppLocalizations {
 我们可能适时更新隐私条款。重大变更将以应用内提示等方式告知；您继续使用即表示同意更新后的条款。
 
 八、联系方式
-如对本隐私条款有任何疑问或投诉，请通过应用内反馈或邮箱联系：copohub@163.com''';
+如对本隐私条款有任何疑问或投诉，请通过应用内反馈或邮箱联系：youdroid2048@gmail.com''';
 
   static const _privacyContentEn = '''Privacy Policy
 Effective Date: 2025-09-01
@@ -144,7 +144,7 @@ We do not actively provide services to or collect information from minors. If yo
 We may update the Privacy Policy from time to time. Major changes will be notified through in-app prompts; your continued use indicates agreement to the updated terms.
 
 8. Contact Information
-If you have any questions or complaints about this Privacy Policy, please contact us through in-app feedback or email: copohub@163.com''';
+If you have any questions or complaints about this Privacy Policy, please contact us through in-app feedback or email: youdroid2048@gmail.com''';
 
   static const _termsContentZh = '''服务协议
 生效日期：2025-09-01
@@ -174,14 +174,20 @@ If you have any questions or complaints about this Privacy Policy, please contac
 六、终止
 如您违反本协议或相关法律法规，我们可在通知或不通知的情况下暂停或终止服务。您也可随时停止使用并卸载本应用。
 
-七、适用法律与争议解决
+七、Pro 订阅服务与自动续费
+1. 我们提供 Pro 会员订阅服务（月度、年度等），订阅即表示您授权我们通过您的支付方式（如 Apple ID, 华为帐号等）按所选周期自动扣费。
+2. 自动续费：除非您在当前订阅期结束前至少 24 小时取消，否则订阅将自动续费并扣款。
+3. 取消订阅：您可随时通过系统设置（如 iOS 的“设置 > Apple ID > 订阅”或华为的应用市场设置）管理或取消自动续费。
+4. 退款政策：订阅费用一经扣除，除法律另有规定外，通常不予退还。
+
+八、适用法律与争议解决
 本协议受您所在国家/地区的强制性法律所约束；在无强制性规定时，以中华人民共和国法律为准据法。争议应先友好协商，协商不成的，提交我方所在地有管辖权的人民法院诉讼解决。
 
-八、其他
+九、其他
 1. 我们可能适时修订本协议，重大变更将于应用内提示；变更后您继续使用即视为同意。
 2. 如本协议任何条款被认定无效或不可执行，其余条款仍有效。
 
-联系邮箱：copohub@163.com''';
+联系邮箱：youdroid2048@gmail.com''';
 
   static const _termsContentEn = '''Terms of Service
 Effective Date: 2025-09-01
@@ -211,14 +217,21 @@ To improve experience and safety, we may update, change, or interrupt some funct
 6. Termination
 If you violate this agreement or related laws and regulations, we may suspend or terminate services with or without notice. You can also stop using and uninstall this application at any time.
 
-7. Governing Law and Dispute Resolution
+7. Pro Subscription and Auto-renewal
+1. We offer Pro membership subscription services (monthly, yearly, etc.). Subscribing means you authorize us to automatically charge your selected payment method (e.g., Apple ID, Huawei Account, etc.) for each cycle.
+2. Auto-renewal: Unless you cancel at least 24 hours before the end of the current subscription period, the subscription will automatically renew and be charged.
+3. Cancellation: You can manage or cancel auto-renewal at any time through system settings (e.g., iOS "Settings > Apple ID > Subscriptions" or Huawei AppGallery settings).
+4. Refund Policy: Once subscription fees are charged, they are generally non-refundable unless otherwise provided by law.
+
+8. Governing Law and Dispute Resolution
 This agreement is governed by the mandatory laws of your country/region; in the absence of mandatory provisions, the laws of the People's Republic of China shall be the governing law. Disputes should be settled through friendly negotiation first; if negotiation fails, they shall be submitted to the people's court with jurisdiction in our location for litigation.
 
-8. Others
+9. Others
 1. We may revise this agreement from time to time, and major changes will be prompted within the application; your continued use after the change is deemed as agreement.
 2. If any term of this agreement is found to be invalid or unenforceable, the remaining terms shall still be valid.
 
-Contact Email: copohub@163.com''';
+
+Contact Email: youdroid2048@gmail.com''';
 
   // ── Notifications ─────────────────────────────────────────────────────────
   String get notificationsTitle => _zh ? '通知' : 'Notifications';
@@ -300,6 +313,25 @@ Contact Email: copohub@163.com''';
   String get and => _zh ? ' 和 ' : ' and ';
   String get privacyPolicy => _zh ? '《隐私条款》' : 'Privacy Policy';
   String get howToGetPAT => _zh ? '如何获取 Personal Access Token?' : 'How to get Personal Access Token?';
+  String get patHelpDialogTitle => _zh ? '如何获取 Personal Access Token' : 'How to Get a Personal Access Token';
+  String get patStep1 => _zh
+      ? '打开 github.com 并登录，点击右上角头像，选择 Settings'
+      : 'Go to github.com, sign in, click your avatar in the top-right corner, and select Settings';
+  String get patStep2 => _zh
+      ? '在左侧边栏滚动到底部，点击 Developer settings'
+      : 'Scroll to the bottom of the left sidebar and click Developer settings';
+  String get patStep3 => _zh
+      ? '选择 Personal access tokens → Tokens (classic)'
+      : 'Select Personal access tokens → Tokens (classic)';
+  String get patStep4 => _zh
+      ? '点击 Generate new token，选择 Generate new token (classic)'
+      : 'Click Generate new token, then choose Generate new token (classic)';
+  String get patStep5 => _zh
+      ? '填写 Note（名称），设置有效期，勾选 repo 和 user 两项权限'
+      : 'Enter a Note (name), choose an expiration, and check the repo and user scopes';
+  String get patStep6 => _zh
+      ? '点击 Generate token，立即复制并保存 Token（页面关闭后无法再次查看）'
+      : 'Click Generate token, then copy and save it immediately — it will not be shown again';
   String get version => _zh ? '版本' : 'Version';
 
   // Login Errors
@@ -343,6 +375,15 @@ Contact Email: copohub@163.com''';
   String get prReopenSuccess => _zh ? 'PR 已重新开启' : 'PR reopened';
   String get prOperationFail => _zh ? '操作失败' : 'Operation failed';
   String get tabIssuesAndPrs => _zh ? '问题 & PR' : 'Issues & PRs';
+
+  // ── Issue ─────────────────────────────────────────────────────────────────
+  String get createIssue => _zh ? '创建 Issue' : 'Create Issue';
+  String get issueTitle => _zh ? '标题 *' : 'Title *';
+  String get issueBody => _zh ? '描述（可选）' : 'Description (Optional)';
+  String get createIssueSuccess => _zh ? 'Issue 创建成功' : 'Issue created successfully';
+  String get createIssueFailed => _zh ? '创建 Issue 失败' : 'Failed to create issue';
+  String get titleCannotBeEmpty => _zh ? '标题不能为空' : 'Title cannot be empty';
+  String get submit => _zh ? '提交' : 'Submit';
 
   // ── Empty & error states ──────────────────────────────────────────────────
   String get noReadme => _zh ? '暂无 README' : 'No README';

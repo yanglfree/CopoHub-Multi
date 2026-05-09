@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'api/api_cache.dart';
+import 'components/dialogs/app_dialog.dart';
 import 'l10n/app_localizations.dart';
 import 'services/app_update_service.dart';
 import 'services/auth_service.dart';
@@ -46,9 +46,11 @@ class _CopoHubAppState extends ConsumerState<CopoHubApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Delay update check until after first frame so router is ready
+    // Delay update check and initial clipboard detection until after first
+    // frame so the router is ready and the user has landed on the home screen.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AppUpdateService.instance.checkAndShowDialogIfNeeded(context);
+      _detectClipboard();
     });
   }
 
@@ -69,34 +71,46 @@ class _CopoHubAppState extends ConsumerState<CopoHubApp>
 
   Future<void> _detectClipboard() async {
     final result = await ClipboardDetectorService.instance.detect();
-    if (result == null || !mounted) return;
-    _showClipboardDialog(result);
+    if (result == null) return;
+
+    final navContext = rootNavigatorKey.currentContext;
+    if (navContext == null || !navContext.mounted) return;
+
+    _showClipboardDialog(navContext, result);
   }
 
-  void _showClipboardDialog(ClipboardDetectionResult result) {
+  void _showClipboardDialog(BuildContext context, ClipboardDetectionResult result) {
     showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('检测到 GitHub 仓库'),
-        content: Text(result.fullName),
+      builder: (dialogContext) => AppDialog(
+        title: '检测到 GitHub 仓库',
+        icon: Icons.link,
         actions: [
-          TextButton(
+          AppDialogAction(
+            label: '忽略',
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               ClipboardDetectorService.instance.clearClipboard();
             },
-            child: const Text('取消'),
           ),
-          FilledButton(
+          AppDialogAction(
+            label: '查看仓库',
+            isPrimary: true,
             onPressed: () {
-              Navigator.pop(context);
-              context.push(
-                '/repository/${result.owner}/${result.repo}',
-              );
+              Navigator.pop(dialogContext);
+              ref.read(routerProvider).push(
+                    '/repository/${result.owner}/${result.repo}',
+                  );
             },
-            child: const Text('查看'),
           ),
         ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text(
+            result.fullName,
+            style: const TextStyle(fontSize: 15),
+          ),
+        ),
       ),
     );
   }

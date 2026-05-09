@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../components/markdown/markdown_scroll_fix.dart';
 import '../../models/copohub_curated_item.dart';
 
 /// Detail page for a CopoHub curated/featured repository.
@@ -186,6 +187,7 @@ class CuratedDetailPage extends StatelessWidget {
               _Section(
                 icon: Icons.auto_awesome_outlined,
                 title: 'AI 摘要',
+                child: MarkdownScrollFix(
                 child: MarkdownBody(
                   data: item.aiSummary,
                   selectable: true,
@@ -196,6 +198,7 @@ class CuratedDetailPage extends StatelessWidget {
                     }
                   },
                 ),
+              ),
               ),
               const SizedBox(height: 16),
             ],
@@ -224,7 +227,7 @@ class CuratedDetailPage extends StatelessWidget {
                   },
                 ),
                 icon: const Icon(Icons.smart_toy_outlined),
-                label: const Text('查看 AI 分析报告'),
+                label: const Text('查看分析报告'),
               ),
             ),
 

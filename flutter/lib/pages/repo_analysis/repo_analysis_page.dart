@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../api/daily_api_client.dart';
+import '../../components/markdown/markdown_scroll_fix.dart';
 import '../../models/repo_analysis.dart';
 
 /// AI repository analysis page.
@@ -361,15 +362,17 @@ class _AnalysisContent extends StatelessWidget {
 
           // Main markdown content
           if (analysis.analysisContent.isNotEmpty) ...[
-            MarkdownBody(
-              data: analysis.analysisContent,
-              selectable: true,
-              onTapLink: (text, href, title) {
-                if (href != null) {
-                  launchUrl(Uri.parse(href),
-                      mode: LaunchMode.externalApplication);
-                }
-              },
+            MarkdownScrollFix(
+              child: MarkdownBody(
+                data: analysis.analysisContent,
+                selectable: true,
+                onTapLink: (text, href, title) {
+                  if (href != null) {
+                    launchUrl(Uri.parse(href),
+                        mode: LaunchMode.externalApplication);
+                  }
+                },
+              ),
             ),
             const SizedBox(height: 16),
           ],

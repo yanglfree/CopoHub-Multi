@@ -13,6 +13,7 @@ import '../../models/user_status.dart';
 import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
 import '../../l10n/app_localizations.dart';
+import '../../components/skeleton/skeleton.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -95,6 +96,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (result.isSuccess) {
       final events = result.data ?? [];
+      debugPrint('Loaded ${events.length} events from /user/events');
       int commitCount = 0;
       int repoCount = 0;
       int prCount = 0;
@@ -102,6 +104,7 @@ class _ProfilePageState extends State<ProfilePage> {
       for (final event in events) {
         final type = event['type'] as String? ?? '';
         final payload = event['payload'] as Map<String, dynamic>?;
+        // debugPrint('Event type: $type');
         switch (type) {
           case 'PushEvent':
             // size is an int but some responses return num
@@ -119,6 +122,8 @@ class _ProfilePageState extends State<ProfilePage> {
         }
       }
 
+      debugPrint('Calculated activity: commits=$commitCount, repos=$repoCount, prs=$prCount');
+
       setState(() {
         _activity = UserActivitySummary(
           commitCount: commitCount,
@@ -128,6 +133,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _activityLoading = false;
       });
     } else {
+      debugPrint('Failed to load events: ${result.message}');
       setState(() => _activityLoading = false);
     }
   }
@@ -201,9 +207,9 @@ class _ProfilePageState extends State<ProfilePage> {
   SliverAppBar _buildAppBar(GithubUser user) {
     return SliverAppBar(
       pinned: true,
-      title: Text(
-        user.name.isNotEmpty ? user.name : '@${user.login}',
-        style: const TextStyle(fontWeight: FontWeight.w700),
+      title: const Text(
+        '我的',
+        style: TextStyle(fontWeight: FontWeight.w700),
       ),
       actions: [
         IconButton(
@@ -1159,15 +1165,7 @@ class _ActivitySummaryCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     if (loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
-        child: Center(
-          child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
-      );
+      return const _ActivitySummarySkeleton();
     }
     if (activity == null) return const SizedBox.shrink();
 
@@ -1576,7 +1574,7 @@ class _SocialSectionState extends State<_SocialSection> {
                   onSelected: (index) => setState(() => _selectedIndex = index),
                 ),
                 if (widget.loading)
-                  const _SocialLoading()
+                  const _SocialSectionSkeleton()
                 else if (widget.error.isNotEmpty && _visibleUsers.isEmpty)
                   _SocialError(message: widget.error, onRetry: widget.onRetry)
                 else if (_visibleUsers.isEmpty)
@@ -1768,24 +1766,6 @@ class _SocialMoreTile extends StatelessWidget {
   }
 }
 
-class _SocialLoading extends StatelessWidget {
-  const _SocialLoading();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox(
-      height: 152,
-      child: Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ),
-    );
-  }
-}
-
 class _SocialError extends StatelessWidget {
   const _SocialError({required this.message, required this.onRetry});
   final String message;
@@ -1817,6 +1797,64 @@ class _SocialEmpty extends StatelessWidget {
           isFollowers ? l10n.noFollowers : l10n.noFollowing,
           style:
               TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivitySummarySkeleton extends StatelessWidget {
+  const _ActivitySummarySkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SkeletonBox(width: 80, height: 18),
+            const SizedBox(height: 10),
+            SkeletonBox(
+              height: 104,
+              radius: 12,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(100),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SocialSectionSkeleton extends StatelessWidget {
+  const _SocialSectionSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer(
+      child: Column(
+        children: List.generate(
+          3,
+          (index) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                const SkeletonBox(width: 44, height: 44, radius: 22),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: SkeletonBox(height: 16),
+                ),
+                const SizedBox(width: 40),
+                SkeletonBox(
+                  width: 18,
+                  height: 18,
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

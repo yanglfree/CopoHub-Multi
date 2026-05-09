@@ -133,6 +133,85 @@ Top project: mattpocock/skills.
     );
   });
 
+  test('extractDailyReportRepositoryRefs captures h3 numbered non-bold names from repositories', () {
+    // Heading format: ### 1. financial-services (Python) | ⭐ +1,367
+    // The repo name is NOT bold, and (Python) is the language, not the owner.
+    final refs = extractDailyReportRepositoryRefs(
+      '### 1. financial-services (Python) | ⭐ +1,367 | Python\n'
+      'Some description.\n'
+      '### 2. DeepSeek-TUI (Rust) | ⭐ +5,787 | Rust\n'
+      'Another description.',
+      repositories: [
+        {'owner': 'Anthropics', 'name': 'financial-services'},
+        {'owner': 'nickthecook', 'name': 'DeepSeek-TUI'},
+      ],
+    );
+
+    expect(refs.map((r) => r.fullName), containsAll([
+      'Anthropics/financial-services',
+      'nickthecook/DeepSeek-TUI',
+    ]));
+  });
+
+  test('extractDailyReportRepositoryRefs captures h3 colon-separated names from repositories', () {
+    // Heading format: ### PageIndex：Vectorless RAG架构的革命性尝试
+    final refs = extractDailyReportRepositoryRefs(
+      '### PageIndex：Vectorless RAG架构的革命性尝试\n'
+      'Some description.\n'
+      '### goose：Rust语言的AI代理新范式\n'
+      'Another description.',
+      repositories: [
+        {'owner': 'nickthecook', 'name': 'PageIndex'},
+        {'owner': 'square', 'name': 'goose'},
+      ],
+    );
+
+    expect(refs.map((r) => r.fullName), containsAll([
+      'nickthecook/PageIndex',
+      'square/goose',
+    ]));
+  });
+
+  test('linkifyDailyReportRepositories links h3 numbered non-bold headings', () {
+    final markdown = linkifyDailyReportRepositories(
+      '### 1. financial-services (Python) | ⭐ +1,367\n'
+      'Some description.',
+      [
+        const DailyReportRepositoryRef(
+          owner: 'Anthropics',
+          name: 'financial-services',
+        ),
+      ],
+    );
+
+    expect(
+      markdown,
+      contains(
+        '[financial-services](copohub://repository/Anthropics/financial-services)',
+      ),
+    );
+  });
+
+  test('linkifyDailyReportRepositories links h3 colon-separated headings', () {
+    final markdown = linkifyDailyReportRepositories(
+      '### PageIndex：Vectorless RAG架构的革命性尝试\n'
+      'Some description.',
+      [
+        const DailyReportRepositoryRef(
+          owner: 'nickthecook',
+          name: 'PageIndex',
+        ),
+      ],
+    );
+
+    expect(
+      markdown,
+      contains(
+        '[PageIndex](copohub://repository/nickthecook/PageIndex)',
+      ),
+    );
+  });
+
   test('dailyReportWithRepositoryData fills missing top repositories', () {
     final report = dailyReportWithRepositoryData(
       {'summary': 'Report'},
@@ -148,6 +227,54 @@ Top project: mattpocock/skills.
             as Map<String, dynamic>,
       )?.fullName,
       'simstudioai/sim',
+    );
+  });
+
+  test('extractDailyReportRepositoryRefs extracts from pre-linked markdown', () {
+    final refs = extractDailyReportRepositoryRefs(
+      '### 1. [nickthecook/DeepSeek-TUI](https://github.com/nickthecook/DeepSeek-TUI) (Rust)\n'
+      'Some description.\n'
+      '### [square/goose](https://github.com/square/goose)：Rust语言的AI代理新范式\n'
+      'Another description.',
+    );
+
+    expect(refs.map((r) => r.fullName), containsAll([
+      'nickthecook/DeepSeek-TUI',
+      'square/goose',
+    ]));
+  });
+
+  test('linkifyDailyReportRepositories preserves existing markdown links', () {
+    final markdown = linkifyDailyReportRepositories(
+      '### 1. [nickthecook/DeepSeek-TUI](https://github.com/nickthecook/DeepSeek-TUI) (Rust) | ⭐ +5,787\n'
+      'Some description.',
+      [
+        const DailyReportRepositoryRef(
+          owner: 'nickthecook',
+          name: 'DeepSeek-TUI',
+        ),
+      ],
+    );
+
+    // Should NOT produce nested links like [[owner/repo](copohub://...)](url)
+    expect(markdown, isNot(contains('[[nickthecook/DeepSeek-TUI]')));
+    // The original link should be preserved
+    expect(
+      markdown,
+      contains(
+        '[nickthecook/DeepSeek-TUI](https://github.com/nickthecook/DeepSeek-TUI)',
+      ),
+    );
+  });
+
+  test('repositoryRouteFromLink routes GitHub URLs from pre-linked reports', () {
+    expect(
+      repositoryRouteFromLink('https://github.com/nickthecook/DeepSeek-TUI'),
+      '/repository/nickthecook/DeepSeek-TUI',
+    );
+    expect(
+      repositoryRouteFromLink('https://github.com/square/goose'),
+      '/repository/square/goose',
     );
   });
 }

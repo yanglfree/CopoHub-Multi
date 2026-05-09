@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "CopoHub"
+    },
+    {
+      "name": "permission_copyboard_reason",
+      "value": "Used to paste copied GitHub access tokens and detect GitHub repository links."
     }
   ]
 }

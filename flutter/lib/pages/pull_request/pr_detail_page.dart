@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/markdown/markdown_scroll_fix.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/link_utils.dart';
 
@@ -763,10 +764,10 @@ class _CommentsTabState extends State<_CommentsTab> {
             left: 12,
             right: 12,
             top: 8,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 8,
+            bottom: MediaQuery.of(context).padding.bottom + 8,
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: TextField(
@@ -1531,23 +1532,25 @@ class _GithubMarkdown extends StatelessWidget {
           border: Border(bottom: BorderSide(color: border, width: 1))),
     );
 
-    return MarkdownBody(
-      data: body,
-      selectable: false,
-      styleSheet: style,
-      onTapLink: (text, href, title) {
-        if (href == null || href.isEmpty) return;
-        dispatchLinkAction(context, href);
-      },
-      imageBuilder: (uri, title, alt) {
-        final src = uri.toString();
-        if (src.isEmpty) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Image.network(src, fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-        );
-      },
+    return MarkdownScrollFix(
+      child: MarkdownBody(
+        data: body,
+        selectable: false,
+        styleSheet: style,
+        onTapLink: (text, href, title) {
+          if (href == null || href.isEmpty) return;
+          dispatchLinkAction(context, href);
+        },
+        imageBuilder: (uri, title, alt) {
+          final src = uri.toString();
+          if (src.isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Image.network(src, fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+          );
+        },
+      ),
     );
   }
 }

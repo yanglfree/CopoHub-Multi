@@ -60,18 +60,19 @@ class ClipboardDetectorService {
   // ── URL parsing ────────────────────────────────────────────────────────────
 
   static ClipboardDetectionResult? _parseGithubUrl(String text) {
-    // HTTPS: https://github.com/owner/repo[.git][/]
+    // HTTPS: https://github.com/owner/repo[.git][/path][?query][#fragment]
+    // Supports www.github.com and matches anywhere in the string.
     final httpsRe = RegExp(
-        r'https?://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?/?(?:[?#].*)?$');
-    final httpsMatch = httpsRe.firstMatch(text.trim());
+        r'https?://(?:www\.)?github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?(?:[/?#].*)?(?:\s|$)');
+    final httpsMatch = httpsRe.firstMatch(text);
     if (httpsMatch != null) {
       return _validated(httpsMatch.group(1)!, httpsMatch.group(2)!);
     }
 
     // SSH: git@github.com:owner/repo[.git]
-    final sshRe =
-        RegExp(r'git@github\.com:([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?$');
-    final sshMatch = sshRe.firstMatch(text.trim());
+    final sshRe = RegExp(
+        r'git@github\.com:([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+?)(?:\.git)?(?:\s|$)');
+    final sshMatch = sshRe.firstMatch(text);
     if (sshMatch != null) {
       return _validated(sshMatch.group(1)!, sshMatch.group(2)!);
     }

@@ -459,8 +459,8 @@ mutation($input: ChangeUserStatusInput!) {
   }
 }''';
     final input = <String, dynamic>{};
-    if (emoji != null) input['emoji'] = emoji.isEmpty ? null : emoji;
-    if (message != null) input['message'] = message.isEmpty ? null : message;
+    if (emoji != null) input['emoji'] = emoji;
+    if (message != null) input['message'] = message;
     if (limitedAvailability != null) {
       input['limitedAvailability'] = limitedAvailability;
     }
@@ -513,6 +513,19 @@ mutation($input: ChangeUserStatusInput!) {
         parser: (d) => (d as List<dynamic>)
             .map((e) => GithubOrg.fromJson(e as Map<String, dynamic>))
             .toList(),
+        ttl: const Duration(minutes: 10),
+      );
+
+  /// Fetch the public members of a GitHub organization.
+  Future<ApiResponse<List<Map<String, dynamic>>>> getOrgPublicMembers(
+    String org, {
+    int perPage = 24,
+  }) =>
+      _get<List<Map<String, dynamic>>>(
+        '/orgs/$org/public_members',
+        params: {'per_page': perPage},
+        parser: (d) =>
+            (d as List<dynamic>).map((e) => e as Map<String, dynamic>).toList(),
         ttl: const Duration(minutes: 10),
       );
 
@@ -990,6 +1003,48 @@ query($login: String!) {
     }
   }
 
+  /// Create a new issue.
+  Future<ApiResponse<Map<String, dynamic>>> createIssue(
+    String owner,
+    String repo, {
+    required String title,
+    String? body,
+    List<String>? labels,
+    List<String>? assignees,
+  }) async {
+    final data = <String, dynamic>{'title': title};
+    if (body != null && body.isNotEmpty) data['body'] = body;
+    if (labels != null) data['labels'] = labels;
+    if (assignees != null) data['assignees'] = assignees;
+    try {
+      final response = await _dio.post<dynamic>(
+        '/repos/$owner/$repo/issues',
+        data: data,
+      );
+      return ApiResponse.ok(response.data as Map<String, dynamic>? ?? {});
+    } on DioException catch (e) {
+      return _handleDioError(e);
+    }
+  }
+
+  /// Update an issue's state — pass `state: 'closed'` or `state: 'open'`.
+  Future<ApiResponse<Map<String, dynamic>>> updateIssue(
+    String owner,
+    String repo,
+    int issueNumber, {
+    required String state,
+  }) async {
+    try {
+      final response = await _dio.patch<dynamic>(
+        '/repos/$owner/$repo/issues/$issueNumber',
+        data: {'state': state},
+      );
+      return ApiResponse.ok(response.data as Map<String, dynamic>? ?? {});
+    } on DioException catch (e) {
+      return _handleDioError(e);
+    }
+  }
+
   /// Create a new pull request.
   Future<ApiResponse<Map<String, dynamic>>> createPullRequest(
     String owner,
@@ -1255,6 +1310,35 @@ query($login: String!) {
         parser: (d) => d as Map<String, dynamic>,
       );
 
+  /// Returns `{'issue_count': int, 'pr_count': int}` for the given repo.
+  /// Uses the search API (counts all states combined).
+  Future<ApiResponse<Map<String, int>>> getIssueCounts(
+    String owner,
+    String repo,
+  ) async {
+    final results = await Future.wait([
+      _get<Map<String, dynamic>>(
+        '/search/issues',
+        params: {'q': 'repo:$owner/$repo type:issue', 'per_page': 1},
+        parser: (d) => d as Map<String, dynamic>,
+      ),
+      _get<Map<String, dynamic>>(
+        '/search/issues',
+        params: {'q': 'repo:$owner/$repo type:pr', 'per_page': 1},
+        parser: (d) => d as Map<String, dynamic>,
+      ),
+    ]);
+    final issueRes = results[0];
+    final prRes = results[1];
+    if (issueRes.isSuccess && prRes.isSuccess) {
+      return ApiResponse.ok({
+        'issue_count': issueRes.data!['total_count'] as int? ?? 0,
+        'pr_count': prRes.data!['total_count'] as int? ?? 0,
+      });
+    }
+    return ApiResponse.fail('Failed to fetch issue counts');
+  }
+
   // ── GraphQL ────────────────────────────────────────────────────────────────────────
 
   Future<ApiResponse<Map<String, dynamic>>> graphql(
@@ -1282,7 +1366,11 @@ query($login: String!) {
         final errMsg = errors.map((e) => (e as Map)['message']).join(', ');
         return ApiResponse.fail('GraphQL error: $errMsg');
       }
-      return ApiResponse.ok(data['data'] as Map<String, dynamic>);
+      final responseData = data['data'];
+      if (responseData == null) {
+        return ApiResponse.fail('GraphQL error: empty response data');
+      }
+      return ApiResponse.ok(responseData as Map<String, dynamic>);
     } on DioException catch (e) {
       return _handleDioError(e);
     }

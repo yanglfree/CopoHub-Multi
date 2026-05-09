@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
 import '../../components/contribution/contribution_calendar.dart';
+import '../../components/repository/repo_context_menu.dart';
 import '../../models/github_org.dart';
 import '../../models/pinned_repository.dart';
 import '../../models/user.dart';
@@ -24,6 +25,7 @@ class UserProfilePage extends StatefulWidget {
 
 class _UserProfilePageState extends State<UserProfilePage> {
   final _api = GitHubApiClient.instance;
+  final GlobalKey _shareButtonKey = GlobalKey();
 
   GithubUser? _user;
   bool _userLoading = true;
@@ -39,6 +41,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   List<GithubOrg> _orgs = [];
   bool _orgsLoading = true;
+
+  List<Map<String, dynamic>> _orgMembers = [];
+  bool _orgMembersLoading = false;
 
   List<PinnedRepository> _pinnedRepos = [];
   bool _pinnedLoading = true;
@@ -73,10 +78,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
       });
       // 用户加载成功后并行拉取其他数据
       _loadRepos();
-      _loadOrgs();
       _loadPinnedRepos();
-      _loadActivity();
-      _loadStatus();
+      if (_user!.type == 'Organization') {
+        _loadOrgMembers();
+      } else {
+        _loadOrgs();
+        _loadActivity();
+        _loadStatus();
+      }
     } else {
       setState(() {
         _userError = result.message ?? '加载失败';
@@ -124,6 +133,16 @@ class _UserProfilePageState extends State<UserProfilePage> {
     } else {
       setState(() => _reposLoading = false);
     }
+  }
+
+  Future<void> _loadOrgMembers() async {
+    setState(() => _orgMembersLoading = true);
+    final result = await _api.getOrgPublicMembers(widget.username);
+    if (!mounted) return;
+    setState(() {
+      _orgMembers = result.data ?? [];
+      _orgMembersLoading = false;
+    });
   }
 
   Future<void> _loadOrgs() async {
@@ -259,12 +278,23 @@ class _UserProfilePageState extends State<UserProfilePage> {
               ),
               actions: [
                 IconButton(
+                  key: _shareButtonKey,
                   icon: const Icon(Icons.share_outlined),
                   tooltip: '分享',
-                  onPressed: () => ShareService.shareProfile(
-                    username: widget.username,
-                    bio: _user?.bio,
-                  ),
+                  onPressed: () async {
+                    final box = _shareButtonKey.currentContext
+                        ?.findRenderObject() as RenderBox?;
+                    final origin = box != null
+                        ? box.localToGlobal(Offset.zero) & box.size
+                        : null;
+                    try {
+                      await ShareService.shareProfile(
+                        username: widget.username,
+                        bio: _user?.bio,
+                        sharePositionOrigin: origin,
+                      );
+                    } catch (_) {}
+                  },
                 ),
               ],
             ),
@@ -295,32 +325,46 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
             const SliverToBoxAdapter(child: Divider(height: 1)),
 
-            // Organizations（有数据时才显示）
-            if (!_orgsLoading && _orgs.isNotEmpty) ...[
+            // Organizations row — only for personal users
+            if (!_orgsLoading && _orgs.isNotEmpty && (_user?.type != 'Organization')) ...[
               SliverToBoxAdapter(child: _OrgRow(orgs: _orgs)),
               const SliverToBoxAdapter(child: Divider(height: 1)),
             ],
 
-            // Contribution calendar
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                child: ContributionCalendar(
-                  username: widget.username,
-                  showThemeMenu: false,
+            // Org members — only for organization accounts
+            if (user.type == 'Organization') ...[
+              SliverToBoxAdapter(
+                child: _OrgMembersSection(
+                  members: _orgMembers,
+                  loading: _orgMembersLoading,
+                  onMemberTap: (login) => context.push('/user/$login'),
                 ),
               ),
-            ),
+              const SliverToBoxAdapter(child: Divider(height: 1)),
+            ],
 
-            // Activity summary card
-            SliverToBoxAdapter(
-              child: _ActivitySummaryCard(
-                activity: _activity,
-                loading: _activityLoading,
+            // Contribution calendar — personal users only
+            if (user.type != 'Organization') ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: ContributionCalendar(
+                    username: widget.username,
+                    showThemeMenu: false,
+                  ),
+                ),
               ),
-            ),
 
-            const SliverToBoxAdapter(child: Divider(height: 1)),
+              // Activity summary card
+              SliverToBoxAdapter(
+                child: _ActivitySummaryCard(
+                  activity: _activity,
+                  loading: _activityLoading,
+                ),
+              ),
+
+              const SliverToBoxAdapter(child: Divider(height: 1)),
+            ],
 
             // Pinned repos carousel（有数据时才显示）
             if (!_pinnedLoading && _pinnedRepos.isNotEmpty) ...[
@@ -426,16 +470,45 @@ class _UserHeader extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              ClipOval(
-                child: CachedNetworkImage(
-                  imageUrl: user.avatarUrl,
-                  width: 72,
-                  height: 72,
-                  placeholder: (_, __) => Container(
-                      width: 72, height: 72, color: cs.surfaceContainerHighest),
-                  errorWidget: (_, __, ___) =>
-                      const Icon(Icons.account_circle, size: 72),
-                ),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: user.avatarUrl,
+                      width: 72,
+                      height: 72,
+                      placeholder: (_, __) => Container(
+                          width: 72, height: 72, color: cs.surfaceContainerHighest),
+                      errorWidget: (_, __, ___) =>
+                          const Icon(Icons.account_circle, size: 72),
+                    ),
+                  ),
+                  if (user.type == 'Organization')
+                    Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                              color: cs.surface, width: 1.5),
+                        ),
+                        child: Text(
+                          'Org',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: cs.onPrimaryContainer,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const Spacer(),
               if (!isCurrentUser)
@@ -1116,6 +1189,7 @@ class _RepoTile extends StatelessWidget {
       children: [
         InkWell(
           onTap: onTap,
+          onLongPress: () => showRepoContextMenu(context, repo),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
@@ -1202,4 +1276,121 @@ class _RepoTile extends StatelessWidget {
 
   static String _fmt(int n) =>
       n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+}
+
+// ── Org members section ───────────────────────────────────────────────────────
+
+class _OrgMembersSection extends StatelessWidget {
+  const _OrgMembersSection({
+    required this.members,
+    required this.loading,
+    required this.onMemberTap,
+  });
+  final List<Map<String, dynamic>> members;
+  final bool loading;
+  final void Function(String) onMemberTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          child: Text(
+            '公开成员',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  letterSpacing: 0.4,
+                ),
+          ),
+        ),
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (members.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            child: Text(
+              '暂无公开成员',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          )
+        else
+          SizedBox(
+            height: 76,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: members.length,
+              itemBuilder: (context, i) => _OrgMemberAvatar(
+                member: members[i],
+                onTap: onMemberTap,
+              ),
+            ),
+          ),
+        const SizedBox(height: 10),
+      ],
+    );
+  }
+}
+
+class _OrgMemberAvatar extends StatelessWidget {
+  const _OrgMemberAvatar({required this.member, required this.onTap});
+  final Map<String, dynamic> member;
+  final void Function(String) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final login = member['login'] as String? ?? '';
+    final avatarUrl = member['avatar_url'] as String? ?? '';
+    return GestureDetector(
+      onTap: login.isNotEmpty ? () => onTap(login) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: cs.outlineVariant, width: 1),
+              ),
+              child: ClipOval(
+                child: CachedNetworkImage(
+                  imageUrl: avatarUrl,
+                  width: 44,
+                  height: 44,
+                  placeholder: (_, __) =>
+                      Container(color: cs.surfaceContainerHighest),
+                  errorWidget: (_, __, ___) =>
+                      const Icon(Icons.account_circle, size: 44),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 56,
+              child: Text(
+                login,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 10),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

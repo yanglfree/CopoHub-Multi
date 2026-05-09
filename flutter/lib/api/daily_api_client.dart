@@ -317,8 +317,7 @@ class DailyApiClient {
       final response = await _dio.get<dynamic>(
         '/api/v1/repo-analyses/$owner/$repo',
       );
-      final body = response.data;
-      final json = body is Map<String, dynamic> ? body : body['data'] as Map<String, dynamic>;
+      final json = normalizeReportPayload(response.data);
       return ApiResponse.ok(RepoAnalysis.fromJson(json));
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
@@ -337,8 +336,7 @@ class DailyApiClient {
           receiveTimeout: const Duration(seconds: 120),
         ),
       );
-      final body = response.data;
-      final json = body is Map<String, dynamic> ? body : body['data'] as Map<String, dynamic>;
+      final json = normalizeReportPayload(response.data);
       return ApiResponse.ok(RepoAnalysis.fromJson(json));
     } on DioException catch (e) {
       if (e.response?.statusCode == 429) {

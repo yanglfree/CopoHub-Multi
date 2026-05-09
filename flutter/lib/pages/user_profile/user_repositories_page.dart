@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/repository/repo_context_menu.dart';
 import '../../models/repository.dart';
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
@@ -274,6 +275,7 @@ class _RepoTile extends StatelessWidget {
     return InkWell(
       onTap: () => context
           .push('/repository/${repo.owner?.login ?? ''}/${repo.name}'),
+      onLongPress: () => showRepoContextMenu(context, repo),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(

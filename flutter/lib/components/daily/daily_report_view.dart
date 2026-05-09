@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import '../markdown/markdown_scroll_fix.dart';
 import '../../utils/constants.dart';
 
 class DailyReportSections {
@@ -139,6 +139,38 @@ List<DailyReportRepositoryRef> extractDailyReportRepositoryRefs(
     if (ref != null) add(ref.owner, ref.name);
   }
 
+  // Build a name-to-owner lookup from already extracted refs so we can
+  // resolve heading-only repo names that lack explicit owner info.
+  final nameToOwner = <String, String>{};
+  for (final ref in refs.values) {
+    nameToOwner.putIfAbsent(ref.name, () => ref.owner);
+  }
+
+  // h3 heading with leading number but NO bold:
+  // e.g. ### 1. financial-services (Python) | ⭐ +1,367 | Python
+  final h3NumberedNamePattern = RegExp(
+    r'^###\s+\d+\.\s+([A-Za-z0-9][A-Za-z0-9._-]*)(?=\s|[（(|：:]|$)',
+    multiLine: true,
+  );
+  for (final match in h3NumberedNamePattern.allMatches(markdown)) {
+    final name = _stripTrailingRepositoryPunctuation(match.group(1)!.trim());
+    final owner = nameToOwner[name];
+    if (owner != null) add(owner, name);
+  }
+
+  // h3 heading without number, repo name followed by colon or Chinese colon:
+  // e.g. ### PageIndex：Vectorless RAG架构的革命性尝试
+  // e.g. ### goose：Rust语言的AI代理新范式
+  final h3ColonNamePattern = RegExp(
+    r'^###\s+([A-Za-z0-9][A-Za-z0-9._-]*)[：:]',
+    multiLine: true,
+  );
+  for (final match in h3ColonNamePattern.allMatches(markdown)) {
+    final name = _stripTrailingRepositoryPunctuation(match.group(1)!.trim());
+    final owner = nameToOwner[name];
+    if (owner != null) add(owner, name);
+  }
+
   return refs.values.toList();
 }
 
@@ -161,8 +193,14 @@ String linkifyDailyReportRepositories(
       return '**[$repoName](${ref.reportLink})**${match.group(2)}${match.group(3)}${match.group(4)}';
     });
 
+    final fullCodeSpanPattern = RegExp('`(${RegExp.escape(ref.fullName)})`');
+    linked = linked.replaceAllMapped(fullCodeSpanPattern, (match) {
+      final fullName = match.group(1)!;
+      return '[`$fullName`](${ref.reportLink})';
+    });
+
     final fullNamePattern = RegExp(
-      r'(^|[^\]\w./:-])(' + RegExp.escape(ref.fullName) + r')(?=$|[^\w/:-])',
+      r'(^|[^`\[\]\w./:-])(' + RegExp.escape(ref.fullName) + r')(?=$|[^`\w/:-])',
       multiLine: true,
     );
     linked = linked.replaceAllMapped(fullNamePattern, (match) {
@@ -186,6 +224,26 @@ String linkifyDailyReportRepositories(
     linked = linked.replaceAllMapped(codeSpanPattern, (match) {
       final name = match.group(1)!;
       return '[`$name`](${ref.reportLink})';
+    });
+
+    // h3 heading with leading number: ### 1. RepoName ...
+    // e.g. ### 1. financial-services (Python) | ⭐ +1,367
+    final h3NumberedPattern = RegExp(
+      r'^(###[ \t]+\d+\.[ \t]+)(' + RegExp.escape(ref.name) + r')(?!\w)',
+      multiLine: true,
+    );
+    linked = linked.replaceAllMapped(h3NumberedPattern, (match) {
+      return '${match.group(1)!}[${match.group(2)!}](${ref.reportLink})';
+    });
+
+    // h3 heading without number: ### RepoName ...
+    // e.g. ### PageIndex：Vectorless RAG架构的革命性尝试
+    final h3PlainPattern = RegExp(
+      r'^(###[ \t]+)(' + RegExp.escape(ref.name) + r')(?!\w)',
+      multiLine: true,
+    );
+    linked = linked.replaceAllMapped(h3PlainPattern, (match) {
+      return '${match.group(1)!}[${match.group(2)!}](${ref.reportLink})';
     });
   }
 
@@ -270,12 +328,23 @@ class DailyReportView extends StatelessWidget {
     final topRepos = (report['top_repositories'] as List<dynamic>? ?? [])
         .map((e) => e as Map<String, dynamic>)
         .toList();
+    // Parse sections from the ORIGINAL markdown first, so section titles
+    // don't end up with raw "[owner/name](copohub://...)" link syntax.
+    final sections = parseDailyReportSections(summary);
     final repoRefs = extractDailyReportRepositoryRefs(
       summary,
       repositories: topRepos,
     );
+    // Linkify each piece of content separately so navigation works everywhere.
+    final linkedIntroduction =
+        linkifyDailyReportRepositories(sections.introduction, repoRefs);
+    final linkedSections = sections.sections
+        .map((s) => DailyReportSection(
+              title: s.title,
+              markdown: linkifyDailyReportRepositories(s.markdown, repoRefs),
+            ))
+        .toList();
     final linkedSummary = linkifyDailyReportRepositories(summary, repoRefs);
-    final sections = parseDailyReportSections(linkedSummary);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
@@ -288,9 +357,9 @@ class DailyReportView extends StatelessWidget {
           topics: topics,
           onShare: onShare,
         ),
-        if (sections.introduction.isNotEmpty) ...[
+        if (linkedIntroduction.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _ArticleLead(markdown: sections.introduction),
+          _ArticleLead(markdown: linkedIntroduction),
         ],
         if (langSummaries.isNotEmpty) ...[
           const SizedBox(height: 20),
@@ -304,14 +373,14 @@ class DailyReportView extends StatelessWidget {
           const SizedBox(height: 10),
           _TopRepoRail(repos: topRepos.take(5).toList()),
         ],
-        if (sections.sections.isNotEmpty) ...[
+        if (linkedSections.isNotEmpty) ...[
           const SizedBox(height: 20),
-          for (var i = 0; i < sections.sections.length; i++) ...[
+          for (var i = 0; i < linkedSections.length; i++) ...[
             _ArticleSection(
               index: i + 1,
-              section: sections.sections[i],
+              section: linkedSections[i],
             ),
-            if (i != sections.sections.length - 1) const SizedBox(height: 14),
+            if (i != linkedSections.length - 1) const SizedBox(height: 14),
           ],
         ] else if (summary.isNotEmpty) ...[
           const SizedBox(height: 16),
@@ -546,19 +615,20 @@ class _ReportMarkdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MarkdownBody(
-      data: markdown,
-      selectable: true,
-      styleSheet: _markdownStyle(context),
-      onTapLink: (text, href, title) {
-        if (href == null) return;
-        final route = repositoryRouteFromLink(href);
-        if (route != null) {
-          context.push(route);
-          return;
-        }
-        launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-      },
+    return MarkdownScrollFix(
+      child: MarkdownBody(
+        data: markdown,
+        styleSheet: _markdownStyle(context),
+        onTapLink: (text, href, title) {
+          if (href == null) return;
+          final route = repositoryRouteFromLink(href);
+          if (route != null) {
+            context.push(route);
+            return;
+          }
+          launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+        },
+      ),
     );
   }
 }
