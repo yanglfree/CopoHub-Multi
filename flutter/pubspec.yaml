@@ -1,7 +1,7 @@
 name: copohub
 description: "CopoHub - GitHub client for HarmonyOS & iOS"
 publish_to: 'none'
-version: 1.4.0+1004000
+version: 2.0.0+2000000
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

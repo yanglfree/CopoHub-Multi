@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.youdroid.copohub",
     "vendor": "example",
-    "versionCode": 1004000,
-    "versionName": "1.4.0",
+    "versionCode": 2000000,
+    "versionName": "2.0.0",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }
