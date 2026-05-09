@@ -67,22 +67,28 @@ String friendlyDioErrorMessage(
   DioException error, {
   String fallback = '网络请求失败，请稍后重试',
 }) {
+  String suffix = '';
+  assert(() {
+    suffix = '\n[Debug: ${error.type.name} - ${error.message} \n ${error.error}]';
+    return true;
+  }());
+  
   switch (error.type) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
-      return '网络连接超时，请检查网络后重试';
+      return '网络连接超时，请检查网络后重试$suffix';
     case DioExceptionType.badCertificate:
     case DioExceptionType.connectionError:
-      return '网络连接异常，请检查网络后重试';
+      return '网络连接异常，请检查网络后重试$suffix';
     case DioExceptionType.cancel:
-      return '请求已取消';
+      return '请求已取消$suffix';
     case DioExceptionType.badResponse:
     case DioExceptionType.unknown:
       return friendlyApiErrorMessage(
         _responseErrorMessage(error) ?? error.message,
         fallback: fallback,
-      );
+      ) + suffix;
   }
 }
 

@@ -313,6 +313,12 @@ class GitHubApiClient {
   }
 
   ApiResponse<T> _handleDioError<T>(DioException e) {
+    print('=== DIO EXCEPTION START ===');
+    print('Type: ${e.type}');
+    print('Message: ${e.message}');
+    print('Error: ${e.error}');
+    print('=== DIO EXCEPTION END ===');
+
     final statusCode = e.response?.statusCode;
     final message = friendlyDioErrorMessage(
       e,

@@ -77,8 +77,17 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _handleCallback(String url) async {
     if (_handlingCallback) return;
     _handlingCallback = true;
+    // Stop the webview from loading before removing it from the tree.
+    // On iOS, removing WebViewWidget while WKWebView is still navigating causes
+    // pending native delegate callbacks to fire against a closed Flutter channel,
+    // which triggers NSAssert(!error) → NSInternalInconsistencyException.
+    final ctrl = _webViewController;
+    if (ctrl != null) {
+      await ctrl.loadRequest(Uri.dataFromString(''));
+    }
     setState(() {
       _showWebView = false;
+      _webViewController = null;
       _loading = true;
       _errorMessage = '';
     });

@@ -65,10 +65,11 @@ dependency_overrides:
     git:
       url: https://gitee.com/openharmony-sig/flutter_packages.git
       path: packages/webview_flutter/webview_flutter_android
+  # Local copy of webview_flutter_wkwebview with threading fix applied:
+  # KVO callbacks from WKWebView may arrive on a background thread; the local
+  # patch dispatches them to the main thread before calling the Flutter channel.
   webview_flutter_wkwebview:
-    git:
-      url: https://gitee.com/openharmony-sig/flutter_packages.git
-      path: packages/webview_flutter/webview_flutter_wkwebview
+    path: packages/webview_flutter/webview_flutter_wkwebview
   webview_flutter_platform_interface:
     git:
       url: https://gitee.com/openharmony-sig/flutter_packages.git
