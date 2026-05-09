@@ -471,6 +471,7 @@ class _FeaturedPageState extends State<FeaturedPage> {
                       },
                       onRetryDeduped: () => _loadDeduped(force: true),
                       onLoadMoreDeduped: () => _loadDeduped(loadMore: true),
+                      onRefresh: () async => _refresh(),
                     )
                   : _CopoHubTab(
                       items: _curated,
@@ -573,7 +574,32 @@ class _TopTabItem extends StatelessWidget {
 
 // ── GitHub精选 tab ────────────────────────────────────────────────────────────
 
-class _GitHubTab extends StatelessWidget {
+// Pinned sliver header delegate for non-collapsing sticky headers.
+class _SliverPinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _SliverPinnedHeaderDelegate({
+    required this.child,
+    required this.height,
+  });
+  final Widget child;
+  final double height;
+
+  @override
+  double get minExtent => height;
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  bool shouldRebuild(_SliverPinnedHeaderDelegate oldDelegate) =>
+      height != oldDelegate.height || child != oldDelegate.child;
+}
+
+class _GitHubTab extends StatefulWidget {
   const _GitHubTab({
     required this.date,
     required this.segment,
@@ -607,6 +633,7 @@ class _GitHubTab extends StatelessWidget {
     required this.onDedupedLanguageChanged,
     required this.onRetryDeduped,
     required this.onLoadMoreDeduped,
+    required this.onRefresh,
   });
 
   final String date;
@@ -641,63 +668,355 @@ class _GitHubTab extends StatelessWidget {
   final void Function(String) onDedupedLanguageChanged;
   final VoidCallback onRetryDeduped;
   final VoidCallback onLoadMoreDeduped;
+  final Future<void> Function() onRefresh;
+
+  @override
+  State<_GitHubTab> createState() => _GitHubTabState();
+}
+
+class _GitHubTabState extends State<_GitHubTab> {
+  // ── Frequent-tab search state (lifted from old _FrequentView) ───────────
+  bool _searchVisible = false;
+  final _searchController = TextEditingController();
+  String _searchText = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<DeduplicatedRepoItem> get _filteredDeduped {
+    if (_searchText.isEmpty) return widget.deduped;
+    final q = _searchText.toLowerCase();
+    return widget.deduped.where((item) {
+      return item.fullName.toLowerCase().contains(q) ||
+          item.owner.toLowerCase().contains(q) ||
+          item.description.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  static const _sinceLabels = {'daily': '日', 'weekly': '周', 'monthly': '月'};
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        if (segment != 2)
-          _DatePickerHeader(
-            date: date,
-            since: since,
-            isPro: isPro,
-            onPrev: onPrevDate,
-            onNext: onNextDate,
-            onTap: onPickDate,
+    final cs = Theme.of(context).colorScheme;
+    return RefreshIndicator(
+      onRefresh: widget.onRefresh,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          // Auto-load more for the frequent tab when near the bottom.
+          if (widget.segment == 2 &&
+              _searchText.isEmpty &&
+              notification is ScrollEndNotification &&
+              notification.metrics.pixels >=
+                  notification.metrics.maxScrollExtent - 200) {
+            widget.onLoadMoreDeduped();
+          }
+          return false;
+        },
+        child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          // ── Collapsible headers (scroll away with content) ──────────
+          if (widget.segment != 2)
+            SliverToBoxAdapter(
+              child: _DatePickerHeader(
+                date: widget.date,
+                since: widget.since,
+                isPro: widget.isPro,
+                onPrev: widget.onPrevDate,
+                onNext: widget.onNextDate,
+                onTap: widget.onPickDate,
+              ),
+            ),
+          if (!widget.isPro && widget.segment != 2)
+            SliverToBoxAdapter(child: _ProBanner(onTap: widget.onPickDate)),
+
+          // ── Pinned segment control ─────────────────────────────────
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _SliverPinnedHeaderDelegate(
+              height: 48,
+              child: _SegmentControl(
+                selected: widget.segment,
+                onSelect: widget.onSegmentChanged,
+              ),
+            ),
           ),
-        if (!isPro && segment != 2) _ProBanner(onTap: onPickDate),
-        _SegmentControl(
-          selected: segment,
-          onSelect: onSegmentChanged,
-        ),
-        Expanded(
-          child: segment == 0
-              ? _TrendingView(
-                  trending: trending,
-                  loading: trendingLoading,
-                  error: trendingError,
-                  language: language,
-                  languages: languages,
-                  since: since,
-                  onLanguageChanged: onLanguageChanged,
-                  onSinceChanged: onSinceChanged,
-                  onRetry: onRetryTrending,
-                )
-              : segment == 1
-                  ? _ReportView(
-                      report: report,
-                      loading: reportLoading,
-                      error: reportError,
-                      notFound: reportNotFound,
-                      onRetry: onRetryReport,
-                    )
-                  : _FrequentView(
-                      items: deduped,
-                      loading: dedupedLoading,
-                      error: dedupedError,
-                      sort: dedupedSort,
-                      language: dedupedLanguage,
-                      languages: languages,
-                      hasMore: dedupedHasMore,
-                      loadingMore: dedupedLoadingMore,
-                      onSortChanged: onDedupedSortChanged,
-                      onLanguageChanged: onDedupedLanguageChanged,
-                      onRetry: onRetryDeduped,
-                      onLoadMore: onLoadMoreDeduped,
-                    ),
-        ),
-      ],
+
+          // ── Segment-specific content ───────────────────────────────
+          if (widget.segment == 0) ..._buildTrendingSlivers(cs),
+          if (widget.segment == 1) ..._buildReportSlivers(),
+          if (widget.segment == 2) ..._buildFrequentSlivers(cs),
+        ],
+      ),
+      ),
     );
+  }
+
+  // ── Trending slivers ────────────────────────────────────────────────────
+
+  List<Widget> _buildTrendingSlivers(ColorScheme cs) {
+    return [
+      // Pinned filter bar
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _SliverPinnedHeaderDelegate(
+          height: 48,
+          child: Container(
+            color: cs.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _LanguageMenu(
+                    selectedLanguage: widget.language,
+                    languages: widget.languages,
+                    onChanged: widget.onLanguageChanged,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ...['daily', 'weekly', 'monthly'].map((s) {
+                  final active = widget.since == s;
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: ChoiceChip(
+                      label: Text(_sinceLabels[s]!,
+                          style: const TextStyle(fontSize: 12)),
+                      selected: active,
+                      onSelected: (_) => widget.onSinceChanged(s),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      ),
+      // Content
+      if (widget.trendingLoading && widget.trending.isEmpty)
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: TrendingListSkeleton(),
+        )
+      else if (widget.trendingError.isNotEmpty && widget.trending.isEmpty)
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: _ErrorRetry(
+            message: widget.trendingError,
+            onRetry: widget.onRetryTrending,
+          ),
+        )
+      else if (widget.trending.isEmpty)
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: _Empty(message: '暂无 Trending 数据'),
+        )
+      else
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                if (i.isOdd) {
+                  return const Divider(
+                      height: 1, indent: 16, endIndent: 16);
+                }
+                return _TrendingCard(item: widget.trending[i ~/ 2]);
+              },
+              childCount: widget.trending.length * 2 - 1,
+            ),
+          ),
+        ),
+    ];
+  }
+
+  // ── Report slivers ──────────────────────────────────────────────────────
+
+  List<Widget> _buildReportSlivers() {
+    return [
+      SliverFillRemaining(
+        hasScrollBody: true,
+        child: _ReportView(
+          report: widget.report,
+          loading: widget.reportLoading,
+          error: widget.reportError,
+          notFound: widget.reportNotFound,
+          onRetry: widget.onRetryReport,
+        ),
+      ),
+    ];
+  }
+
+  // ── Frequent slivers ────────────────────────────────────────────────────
+
+  List<Widget> _buildFrequentSlivers(ColorScheme cs) {
+    final filtered = _filteredDeduped;
+    return [
+      // Pinned filter bar
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _SliverPinnedHeaderDelegate(
+          height: 48,
+          child: Container(
+            color: cs.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _LanguageMenu(
+                    selectedLanguage: widget.dedupedLanguage,
+                    languages: widget.languages,
+                    onChanged: widget.onDedupedLanguageChanged,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: IconButton(
+                    icon: Icon(
+                      _searchVisible ? Icons.search_off : Icons.search,
+                      size: 20,
+                      color:
+                          _searchVisible ? cs.primary : cs.onSurfaceVariant,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _searchVisible = !_searchVisible;
+                        if (!_searchVisible) {
+                          _searchController.clear();
+                          _searchText = '';
+                        }
+                      });
+                    },
+                    tooltip: '搜索仓库',
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                ChoiceChip(
+                  label: const Text('累计', style: TextStyle(fontSize: 12)),
+                  selected: widget.dedupedSort == 'total',
+                  onSelected: (_) => widget.onDedupedSortChanged('total'),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                const SizedBox(width: 4),
+                ChoiceChip(
+                  label: const Text('最近', style: TextStyle(fontSize: 12)),
+                  selected: widget.dedupedSort == 'recent',
+                  onSelected: (_) => widget.onDedupedSortChanged('recent'),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      // Search bar (non-pinned, scrolls with content)
+      if (_searchVisible)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: '搜索仓库名、作者或描述...',
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searchText.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchText = '';
+                          });
+                        },
+                      )
+                    : null,
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onChanged: (v) => setState(() => _searchText = v),
+            ),
+          ),
+        ),
+      // Content
+      if (widget.dedupedLoading && widget.deduped.isEmpty)
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: TrendingListSkeleton(),
+        )
+      else if (widget.dedupedError.isNotEmpty && widget.deduped.isEmpty)
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: _ErrorRetry(
+            message: widget.dedupedError,
+            onRetry: widget.onRetryDeduped,
+          ),
+        )
+      else if (filtered.isEmpty)
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: _Empty(
+            message:
+                _searchText.isNotEmpty ? '未找到匹配的仓库' : '暂无高频项目数据',
+          ),
+        )
+      else ...[
+        SliverPadding(
+          padding: const EdgeInsets.only(top: 8, bottom: 24),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                if (i.isOdd) {
+                  final itemIndex = i ~/ 2;
+                  if (itemIndex < filtered.length - 1) {
+                    return const Divider(
+                        height: 1, indent: 16, endIndent: 16);
+                  }
+                  return const SizedBox.shrink();
+                }
+                return _FrequentCard(
+                    item: filtered[i ~/ 2], rank: i ~/ 2 + 1);
+              },
+              childCount: filtered.length * 2 - 1,
+            ),
+          ),
+        ),
+        // Load-more indicator
+        if (_searchText.isEmpty &&
+            (widget.dedupedHasMore || widget.dedupedLoadingMore))
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: widget.dedupedLoadingMore
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child:
+                            CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : TextButton(
+                        onPressed: widget.onLoadMoreDeduped,
+                        child: const Text('加载更多'),
+                      ),
+              ),
+            ),
+          ),
+      ],
+    ];
   }
 }
 
@@ -965,90 +1284,7 @@ class _SegBtn extends StatelessWidget {
   }
 }
 
-// ── Trending view ─────────────────────────────────────────────────────────────
 
-class _TrendingView extends StatelessWidget {
-  const _TrendingView({
-    required this.trending,
-    required this.loading,
-    required this.error,
-    required this.language,
-    required this.languages,
-    required this.since,
-    required this.onLanguageChanged,
-    required this.onSinceChanged,
-    required this.onRetry,
-  });
-  final List<TrendingItem> trending;
-  final bool loading;
-  final String error;
-  final String language;
-  final List<String> languages;
-  final String since;
-  final void Function(String) onLanguageChanged;
-  final void Function(String) onSinceChanged;
-  final VoidCallback onRetry;
-
-  static const _sinceLabels = {'daily': '日', 'weekly': '周', 'monthly': '月'};
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Filter bar
-        Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: _LanguageMenu(
-                  selectedLanguage: language,
-                  languages: languages,
-                  onChanged: onLanguageChanged,
-                ),
-              ),
-              const SizedBox(width: 8),
-              ...['daily', 'weekly', 'monthly'].map((s) {
-                final active = since == s;
-                return Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: ChoiceChip(
-                    label: Text(_sinceLabels[s]!,
-                        style: const TextStyle(fontSize: 12)),
-                    selected: active,
-                    onSelected: (_) => onSinceChanged(s),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                );
-              }),
-            ],
-          ),
-        ),
-        Expanded(
-          child: loading && trending.isEmpty
-              ? const TrendingListSkeleton()
-              : error.isNotEmpty && trending.isEmpty
-                  ? _ErrorRetry(message: error, onRetry: onRetry)
-                  : trending.isEmpty
-                      ? const _Empty(message: '暂无 Trending 数据')
-                      : RefreshIndicator(
-                          onRefresh: () async => onRetry(),
-                          child: ListView.separated(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            itemCount: trending.length,
-                            separatorBuilder: (_, __) => const Divider(
-                                height: 1, indent: 16, endIndent: 16),
-                            itemBuilder: (context, i) =>
-                                _TrendingCard(item: trending[i]),
-                          ),
-                        ),
-        ),
-      ],
-    );
-  }
-}
 
 class _LanguageMenu extends StatelessWidget {
   const _LanguageMenu({
@@ -1311,225 +1547,7 @@ class _LangDot extends StatelessWidget {
       );
 }
 
-// ── 高频项目 view ─────────────────────────────────────────────────────────────
 
-class _FrequentView extends StatefulWidget {
-  const _FrequentView({
-    required this.items,
-    required this.loading,
-    required this.error,
-    required this.sort,
-    required this.language,
-    required this.languages,
-    required this.hasMore,
-    required this.loadingMore,
-    required this.onSortChanged,
-    required this.onLanguageChanged,
-    required this.onRetry,
-    required this.onLoadMore,
-  });
-
-  final List<DeduplicatedRepoItem> items;
-  final bool loading;
-  final String error;
-  final String sort;
-  final String language;
-  final List<String> languages;
-  final bool hasMore;
-  final bool loadingMore;
-  final void Function(String) onSortChanged;
-  final void Function(String) onLanguageChanged;
-  final VoidCallback onRetry;
-  final VoidCallback onLoadMore;
-
-  @override
-  State<_FrequentView> createState() => _FrequentViewState();
-}
-
-class _FrequentViewState extends State<_FrequentView> {
-  bool _searchVisible = false;
-  final _searchController = TextEditingController();
-  String _searchText = '';
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  List<DeduplicatedRepoItem> get _filteredItems {
-    if (_searchText.isEmpty) return widget.items;
-    final q = _searchText.toLowerCase();
-    return widget.items.where((item) {
-      return item.fullName.toLowerCase().contains(q) ||
-          item.owner.toLowerCase().contains(q) ||
-          item.description.toLowerCase().contains(q);
-    }).toList();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = _filteredItems;
-    final cs = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        // Filter bar
-        Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: _LanguageMenu(
-                  selectedLanguage: widget.language,
-                  languages: widget.languages,
-                  onChanged: widget.onLanguageChanged,
-                ),
-              ),
-              const SizedBox(width: 4),
-              SizedBox(
-                width: 36,
-                height: 36,
-                child: IconButton(
-                  icon: Icon(
-                    _searchVisible ? Icons.search_off : Icons.search,
-                    size: 20,
-                    color: _searchVisible ? cs.primary : cs.onSurfaceVariant,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _searchVisible = !_searchVisible;
-                      if (!_searchVisible) {
-                        _searchController.clear();
-                        _searchText = '';
-                      }
-                    });
-                  },
-                  tooltip: '搜索仓库',
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-              const SizedBox(width: 4),
-              ChoiceChip(
-                label: const Text('累计', style: TextStyle(fontSize: 12)),
-                selected: widget.sort == 'total',
-                onSelected: (_) => widget.onSortChanged('total'),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              const SizedBox(width: 4),
-              ChoiceChip(
-                label: const Text('最近', style: TextStyle(fontSize: 12)),
-                selected: widget.sort == 'recent',
-                onSelected: (_) => widget.onSortChanged('recent'),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ],
-          ),
-        ),
-        // Search bar
-        if (_searchVisible)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: '搜索仓库名、作者或描述...',
-                prefixIcon: const Icon(Icons.search, size: 18),
-                suffixIcon: _searchText.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          setState(() {
-                            _searchController.clear();
-                            _searchText = '';
-                          });
-                        },
-                      )
-                    : null,
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onChanged: (v) => setState(() => _searchText = v),
-            ),
-          ),
-        Expanded(
-          child: widget.loading && widget.items.isEmpty
-              ? const TrendingListSkeleton()
-              : widget.error.isNotEmpty && widget.items.isEmpty
-                  ? _ErrorRetry(message: widget.error, onRetry: widget.onRetry)
-                  : filtered.isEmpty
-                      ? _Empty(
-                          message: _searchText.isNotEmpty
-                              ? '未找到匹配的仓库'
-                              : '暂无高频项目数据',
-                        )
-                      : RefreshIndicator(
-                          onRefresh: () async => widget.onRetry(),
-                          child: NotificationListener<ScrollNotification>(
-                            onNotification: (notification) {
-                              if (_searchText.isEmpty &&
-                                  notification is ScrollEndNotification &&
-                                  notification.metrics.pixels >=
-                                      notification.metrics.maxScrollExtent -
-                                          200) {
-                                widget.onLoadMore();
-                              }
-                              return false;
-                            },
-                            child: ListView.separated(
-                              padding:
-                                  const EdgeInsets.only(top: 8, bottom: 24),
-                              itemCount: filtered.length +
-                                  (_searchText.isEmpty &&
-                                          (widget.hasMore ||
-                                              widget.loadingMore)
-                                      ? 1
-                                      : 0),
-                              separatorBuilder: (_, i) =>
-                                  i < filtered.length - 1
-                                      ? const Divider(
-                                          height: 1,
-                                          indent: 16,
-                                          endIndent: 16)
-                                      : const SizedBox.shrink(),
-                              itemBuilder: (context, i) {
-                                if (i >= filtered.length) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 16),
-                                    child: Center(
-                                      child: widget.loadingMore
-                                          ? const SizedBox(
-                                              width: 24,
-                                              height: 24,
-                                              child: CircularProgressIndicator(
-                                                  strokeWidth: 2),
-                                            )
-                                          : TextButton(
-                                              onPressed: widget.onLoadMore,
-                                              child: const Text('加载更多'),
-                                            ),
-                                    ),
-                                  );
-                                }
-                                return _FrequentCard(
-                                    item: filtered[i], rank: i + 1);
-                              },
-                            ),
-                          ),
-                        ),
-        ),
-      ],
-    );
-  }
-}
 
 class _FrequentCard extends StatelessWidget {
   const _FrequentCard({required this.item, required this.rank});
