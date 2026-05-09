@@ -356,7 +356,7 @@ Contact Email: youdroid2048@gmail.com''';
 
   // ── Issues filter ─────────────────────────────────────────────────────────
   String get filterAll => _zh ? '全部' : 'All';
-  String get filterOpen => _zh ? '开放' : 'Open';
+  String get filterOpen => _zh ? '打开' : 'Open';
   String get filterClosed => _zh ? '已关闭' : 'Closed';
 
   // ── Pull Request ──────────────────────────────────────────────────────────
