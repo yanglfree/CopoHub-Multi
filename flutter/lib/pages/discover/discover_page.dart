@@ -25,22 +25,10 @@ class _DiscoverPageState extends State<DiscoverPage>
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this);
-    _tab.addListener(_onTabChanged);
-  }
-
-  void _onTabChanged() {
-    if (_tab.indexIsChanging) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final innerCtrl = _nestedKey.currentState?.innerController;
-      if (innerCtrl != null && innerCtrl.hasClients) {
-        innerCtrl.jumpTo(0);
-      }
-    });
   }
 
   @override
   void dispose() {
-    _tab.removeListener(_onTabChanged);
     _tab.dispose();
     super.dispose();
   }
