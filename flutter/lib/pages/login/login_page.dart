@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../components/dialogs/pat_help_dialog.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../components/policy/policy_dialog.dart';
@@ -13,7 +15,11 @@ import '../../l10n/app_localizations.dart';
 // webview_flutter uses the OpenHarmony-SIG fork which provides ohos support.
 bool get _isOhos => isOhos;
 
+// Used only for the user-initiated paste button on HarmonyOS. The OHOS
+// pasteboard.getData callback correctly suspends until the user responds to
+// the permission dialog, making the paste succeed in a single tap.
 const _ohosClipboardChannel = MethodChannel('com.youdroid/clipboard');
+
 const _appIconAsset = 'assets/images/ic_icon.png';
 
 class LoginPage extends StatefulWidget {
@@ -30,9 +36,39 @@ class _LoginPageState extends State<LoginPage> {
   bool _showTokenLogin = false;
   bool _handlingCallback = false;
   bool _agreementAccepted = false;
+  bool _tokenObscured = true;
   final _tokenController = TextEditingController();
   WebViewController? _webViewController;
   String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstLaunch());
+  }
+
+  Future<void> _checkFirstLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final accepted = prefs.getBool(Constants.storagePrivacyAccepted) ?? false;
+    if (!accepted) _showFirstLaunchPolicyDialog();
+  }
+
+  void _showFirstLaunchPolicyDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PolicyDialog(
+        showActions: true,
+        onAccept: () async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(Constants.storagePrivacyAccepted, true);
+          if (mounted) setState(() => _agreementAccepted = true);
+        },
+        onDecline: () => exit(0),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -137,76 +173,19 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _pasteTokenFromClipboard(
-      EditableTextState editableTextState) async {
-    final pastedText = await _getClipboardText();
-    if (pastedText == null || pastedText.isEmpty) {
-      editableTextState.hideToolbar();
-      return;
-    }
-
-    final value = _tokenController.value;
-    final selection = value.selection.isValid
-        ? value.selection
-        : TextSelection.collapsed(offset: value.text.length);
-    final newText = selection.textBefore(value.text) +
-        pastedText +
-        selection.textAfter(value.text);
-    final newOffset = selection.start + pastedText.length;
-
-    editableTextState.userUpdateTextEditingValue(
-      TextEditingValue(
-        text: newText,
-        selection: TextSelection.collapsed(offset: newOffset),
-      ),
-      SelectionChangedCause.toolbar,
-    );
-    editableTextState.hideToolbar();
-  }
-
   Future<String?> _getClipboardText() async {
     try {
       if (_isOhos) {
+        // On HarmonyOS, pasteboard.getData suspends until the user responds to
+        // the READ_PASTEBOARD permission dialog, so this succeeds in one tap.
         return (await _ohosClipboardChannel.invokeMethod<String>('getText'))
             ?.replaceAll(RegExp(r'\s'), '');
       }
-
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       return data?.text?.replaceAll(RegExp(r'\s'), '');
     } catch (_) {
       return null;
     }
-  }
-
-  Widget _buildOhosTokenContextMenu(
-    BuildContext context,
-    EditableTextState editableTextState,
-  ) {
-    var hasPasteButton = false;
-    final buttonItems = editableTextState.contextMenuButtonItems.map((item) {
-      if (item.type != ContextMenuButtonType.paste) {
-        return item;
-      }
-
-      hasPasteButton = true;
-      return item.copyWith(
-        onPressed: () => _pasteTokenFromClipboard(editableTextState),
-      );
-    }).toList();
-
-    if (!hasPasteButton) {
-      buttonItems.add(
-        ContextMenuButtonItem(
-          type: ContextMenuButtonType.paste,
-          onPressed: () => _pasteTokenFromClipboard(editableTextState),
-        ),
-      );
-    }
-
-    return AdaptiveTextSelectionToolbar.buttonItems(
-      anchors: editableTextState.contextMenuAnchors,
-      buttonItems: buttonItems,
-    );
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -412,129 +391,128 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildTokenPanel(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withAlpha(128)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            l10n.loginWithPAT,
-            textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            l10n.patDesc,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  height: 1.35,
-                ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: _buildTokenInput(context)),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 50,
-                child: OutlinedButton(
-                  onPressed: () async {
-                    final text = await _getClipboardText();
-                    if (text == null || text.isEmpty) return;
-                    setState(() {
-                      _tokenController.text = text;
-                      _errorMessage = '';
-                    });
-                  },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(l10n.paste),
-                ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.key_rounded, size: 18, color: cs.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                l10n.loginWithToken,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 44,
-            child: FilledButton(
-              onPressed: _loading ? null : _loginWithToken,
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                elevation: 0,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          l10n.patDesc,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                height: 1.4,
               ),
-              child: Text(l10n.login),
+        ),
+        const SizedBox(height: 16),
+        _buildTokenInput(context),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 56,
+          child: FilledButton(
+            onPressed: _loading ? null : _loginWithToken,
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return cs.onSurface.withAlpha(30);
+                }
+                return const Color(0xFF24292F);
+              }),
+              foregroundColor: const WidgetStatePropertyAll(Colors.white),
+              shape: const WidgetStatePropertyAll(
+                RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(28))),
+              ),
+              elevation: const WidgetStatePropertyAll(0),
+              textStyle: const WidgetStatePropertyAll(
+                  TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
+            child: Text(l10n.login),
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 44,
-            child: TextButton(
-              onPressed: _loading
-                  ? null
-                  : () => setState(() {
-                        _showTokenLogin = false;
-                        _tokenController.clear();
-                        _errorMessage = '';
-                      }),
-              child: Text(l10n.back),
-            ),
-          ),
-        ],
-      ),
+        ),
+        TextButton(
+          onPressed: _loading
+              ? null
+              : () => setState(() {
+                    _showTokenLogin = false;
+                    _tokenController.clear();
+                    _errorMessage = '';
+                  }),
+          child: Text(l10n.back),
+        ),
+      ],
     );
   }
 
   Widget _buildTokenInput(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return TextField(
       controller: _tokenController,
-      obscureText: true,
+      obscureText: _tokenObscured,
       keyboardType: TextInputType.visiblePassword,
       inputFormatters: [
         FilteringTextInputFormatter.deny(RegExp(r'\s')),
       ],
-      contextMenuBuilder: _isOhos ? _buildOhosTokenContextMenu : null,
       decoration: InputDecoration(
-        hintText: AppLocalizations.of(context).enterPAT,
-        hintStyle: TextStyle(
-          color: Theme.of(context).colorScheme.outline,
-          fontSize: 13,
-        ),
+        hintText: l10n.enterPAT,
+        hintStyle: TextStyle(color: cs.outline, fontSize: 13),
         filled: true,
-        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        fillColor: cs.surfaceContainerHighest,
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        border: const OutlineInputBorder(),
+            const EdgeInsets.only(left: 16, top: 14, bottom: 14, right: 4),
+        border: OutlineInputBorder(
+          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(12),
+        ),
         enabledBorder: OutlineInputBorder(
           borderSide: BorderSide.none,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
-          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: cs.primary, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        suffixIcon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(
+                _tokenObscured
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                size: 20,
+                color: cs.onSurfaceVariant,
+              ),
+              onPressed: () => setState(() => _tokenObscured = !_tokenObscured),
+            ),
+            IconButton(
+              icon: Icon(Icons.content_paste_rounded,
+                  size: 20, color: cs.primary),
+              tooltip: l10n.paste,
+              onPressed: () async {
+                final text = await _getClipboardText();
+                if (!mounted || text == null || text.isEmpty) return;
+                setState(() {
+                  _tokenController.text = text;
+                  _errorMessage = '';
+                });
+              },
+            ),
+          ],
         ),
       ),
       onSubmitted: (_) => _loginWithToken(),

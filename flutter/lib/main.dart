@@ -70,6 +70,11 @@ class _CopoHubAppState extends ConsumerState<CopoHubApp>
   }
 
   Future<void> _detectClipboard() async {
+    // Only detect clipboard after the user has logged in, to avoid triggering
+    // the HarmonyOS clipboard-access permission dialog before the user has
+    // agreed to the privacy policy.
+    if (!AuthService.instance.isLoggedIn) return;
+
     final result = await ClipboardDetectorService.instance.detect();
     if (result == null) return;
 

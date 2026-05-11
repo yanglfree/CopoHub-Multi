@@ -76,7 +76,7 @@ class _PolicyDialogState extends State<PolicyDialog> {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Image.asset(
-              'assets/images/icon.png',
+              'assets/images/ic_icon.png',
               width: 48,
               height: 48,
               errorBuilder: (_, __, ___) => Container(

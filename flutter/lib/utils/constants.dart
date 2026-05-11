@@ -33,6 +33,7 @@ class Constants {
   // ── Storage keys ────────────────────────────────────────────────────────────
   static const String storageAccessToken = 'github_access_token';
   static const String storageUserInfo = 'github_user_info';
+  static const String storagePrivacyAccepted = 'privacy_accepted';
   static const String storageThemeMode = 'app_theme_mode';
   static const String storageContributionTheme = 'contribution_theme_color';
 
