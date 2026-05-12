@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CopoHub — Your GitHub Explorer on HarmonyOS and iOS</title>
+    <meta name="description" content="CopoHub is a modern GitHub client for HarmonyOS and iOS. Discover trending repos, AI-powered analysis, and manage your open-source world on the go.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #06080F;
+            --bg-card: rgba(255,255,255,0.04);
+            --bg-card-hover: rgba(255,255,255,0.07);
+            --border-subtle: rgba(255,255,255,0.08);
+            --border-hover: rgba(255,255,255,0.15);
+            --text-primary: #F0F2F5;
+            --text-secondary: #8B92A5;
+            --text-tertiary: #5A6178;
+            --accent-blue: #3B82F6;
+            --accent-purple: #8B5CF6;
+            --accent-emerald: #10B981;
+            --accent-amber: #F59E0B;
+            --accent-rose: #F43F5E;
+            --glow-blue: rgba(59,130,246,0.15);
+            --glow-purple: rgba(139,92,246,0.15);
+            --nav-bg: rgba(6,8,15,0.7);
+            --nav-bg-scroll: rgba(6,8,15,0.92);
+            --img-shadow: rgba(0,0,0,0.5);
+        }
+        html[data-theme="light"] {
+            --bg-primary: #F5F7FA;
+            --bg-card: rgba(0,0,0,0.03);
+            --bg-card-hover: rgba(0,0,0,0.06);
+            --border-subtle: rgba(0,0,0,0.08);
+            --border-hover: rgba(0,0,0,0.15);
+            --text-primary: #1A1D26;
+            --text-secondary: #5A6178;
+            --text-tertiary: #8B92A5;
+            --nav-bg: rgba(245,247,250,0.75);
+            --nav-bg-scroll: rgba(245,247,250,0.92);
+            --img-shadow: rgba(0,0,0,0.15);
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ---- Ambient Background ---- */
+        .ambient-bg {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+            overflow: hidden;
+        }
+        .ambient-bg .orb {
+            position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.35;
+            animation: drift 20s ease-in-out infinite alternate;
+        }
+        .ambient-bg .orb-1 { width: 600px; height: 600px; top: -10%; left: -10%; background: var(--accent-purple); }
+        .ambient-bg .orb-2 { width: 500px; height: 500px; bottom: 10%; right: -8%; background: var(--accent-blue); animation-delay: -7s; }
+        .ambient-bg .orb-3 { width: 400px; height: 400px; top: 40%; left: 50%; background: var(--accent-emerald); opacity: 0.15; animation-delay: -12s; }
+        @keyframes drift {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(40px, -30px) scale(1.1); }
+        }
+
+        /* ---- Navbar ---- */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            padding: 1rem 2rem;
+            background: var(--nav-bg);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex; align-items: center; justify-content: space-between;
+            transition: background 0.3s;
+        }
+        .nav-brand {
+            display: flex; align-items: center; gap: 0.6rem;
+            font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em;
+            text-decoration: none; color: var(--text-primary);
+        }
+        .nav-brand img { width: 32px; height: 32px; border-radius: 8px; }
+        .nav-links { display: flex; gap: 2rem; align-items: center; }
+        .nav-links a {
+            color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; font-weight: 500;
+            transition: color 0.25s;
+        }
+        .nav-links a:hover { color: var(--text-primary); }
+        .lang-switch, .theme-switch {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            padding: 0.35rem 0.75rem; border-radius: 8px; cursor: pointer;
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            color: var(--text-secondary); font-size: 0.8rem; font-weight: 600;
+            transition: all 0.25s; user-select: none;
+        }
+        .lang-switch:hover, .theme-switch:hover { border-color: var(--border-hover); color: var(--text-primary); }
+
+        /* ---- Layout ---- */
+        .page-wrapper { position: relative; z-index: 1; }
+        section { padding: 6rem 2rem; max-width: 1200px; margin: 0 auto; }
+
+        /* ---- Hero ---- */
+        .hero {
+            display: flex; align-items: center; justify-content: center;
+            padding-top: 6rem; padding-bottom: 2rem; gap: 3rem; flex-wrap: wrap;
+        }
+        .hero-text { flex: 1; min-width: 340px; max-width: 560px; }
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.4rem 1rem; border-radius: 999px;
+            background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.25);
+            font-size: 0.8rem; font-weight: 600; color: #C4B5FD;
+            margin-bottom: 1.5rem;
+            animation: fadeUp 0.8s ease-out both;
+        }
+        .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #A78BFA; animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 5.5vw, 4rem); font-weight: 900;
+            line-height: 1.08; letter-spacing: -0.03em;
+            margin-bottom: 1.5rem;
+            animation: fadeUp 0.8s 0.1s ease-out both;
+        }
+        .hero h1 .gradient-text {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple), var(--accent-emerald));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero-desc {
+            font-size: 1.15rem; line-height: 1.7; color: var(--text-secondary);
+            margin-bottom: 2.5rem; max-width: 480px;
+            animation: fadeUp 0.8s 0.2s ease-out both;
+        }
+        .hero-actions {
+            display: flex; gap: 1rem; flex-wrap: wrap;
+            animation: fadeUp 0.8s 0.3s ease-out both;
+        }
+        .btn-primary {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.85rem 2rem; border-radius: 12px; font-weight: 600; font-size: 0.95rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: #fff; text-decoration: none; border: none; cursor: pointer;
+            transition: transform 0.25s, box-shadow 0.25s;
+            box-shadow: 0 4px 24px rgba(59,130,246,0.3);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(59,130,246,0.45); }
+        .btn-outline {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.85rem 2rem; border-radius: 12px; font-weight: 600; font-size: 0.95rem;
+            background: transparent; color: var(--text-primary); text-decoration: none;
+            border: 1px solid var(--border-subtle); cursor: pointer;
+            transition: border-color 0.25s, background 0.25s;
+        }
+        .btn-outline:hover { border-color: var(--border-hover); background: var(--bg-card); }
+
+        .hero-image {
+            flex: 1; min-width: 300px; max-width: 480px; display: flex; justify-content: center;
+            animation: fadeUp 1s 0.4s ease-out both;
+        }
+        .hero-image img {
+            width: 100%; height: auto; border-radius: 24px;
+            box-shadow: 0 40px 80px var(--img-shadow), 0 0 0 1px var(--border-subtle);
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(24px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ---- Stats Bar ---- */
+        .stats-bar {
+            display: flex; justify-content: center; gap: 3rem; flex-wrap: wrap;
+            padding: 2rem 2rem 1rem; max-width: 900px; margin: 0 auto;
+        }
+        .stat-item { text-align: center; animation: fadeUp 0.8s ease-out both; }
+        .stat-item:nth-child(2) { animation-delay: 0.1s; }
+        .stat-item:nth-child(3) { animation-delay: 0.2s; }
+        .stat-num {
+            font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .stat-label { font-size: 0.85rem; color: var(--text-tertiary); margin-top: 0.25rem; font-weight: 500; }
+
+        /* ---- Section Titles ---- */
+        .section-label {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;
+            color: var(--accent-blue); margin-bottom: 1rem;
+        }
+        .section-title {
+            font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 800;
+            letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 1rem;
+        }
+        .section-desc { font-size: 1.05rem; color: var(--text-secondary); line-height: 1.7; max-width: 600px; }
+
+        /* ---- Features Grid ---- */
+        .features { padding-top: 4rem; }
+        .features-header { text-align: center; margin-bottom: 4rem; }
+        .features-header .section-desc { margin: 0 auto; }
+        .features-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+        .feature-card {
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            border-radius: 20px; padding: 2rem; transition: all 0.35s;
+            position: relative; overflow: hidden;
+        }
+        .feature-card::before {
+            content: ''; position: absolute; inset: 0; border-radius: 20px; opacity: 0;
+            background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255,255,255,0.04), transparent 40%);
+            transition: opacity 0.35s;
+        }
+        .feature-card:hover { border-color: var(--border-hover); background: var(--bg-card-hover); transform: translateY(-4px); }
+        .feature-card:hover::before { opacity: 1; }
+
+        .feature-icon {
+            width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+            margin-bottom: 1.25rem; font-size: 1.5rem;
+        }
+        .fi-blue { background: rgba(59,130,246,0.12); color: var(--accent-blue); }
+        .fi-purple { background: rgba(139,92,246,0.12); color: var(--accent-purple); }
+        .fi-emerald { background: rgba(16,185,129,0.12); color: var(--accent-emerald); }
+        .fi-amber { background: rgba(245,158,11,0.12); color: var(--accent-amber); }
+        .fi-rose { background: rgba(244,63,94,0.12); color: var(--accent-rose); }
+        .fi-cyan { background: rgba(6,182,212,0.12); color: #06B6D4; }
+
+        .feature-card h3 { font-size: 1.15rem; font-weight: 700; margin-bottom: 0.6rem; }
+        .feature-card p { font-size: 0.92rem; color: var(--text-secondary); line-height: 1.65; }
+
+        /* ---- Highlights ---- */
+        .highlights { text-align: center; }
+        .highlights-header { margin-bottom: 4rem; }
+        .highlights-header .section-desc { margin: 0 auto; }
+        .highlight-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
+        .highlight-card {
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            border-radius: 20px; padding: 2.5rem 2rem; text-align: center;
+            transition: all 0.35s;
+        }
+        .highlight-card:hover { border-color: var(--border-hover); transform: translateY(-4px); }
+        .highlight-emoji { font-size: 2.5rem; margin-bottom: 1rem; display: block; }
+        .highlight-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .highlight-card p { font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6; }
+
+        /* ---- CTA ---- */
+        .cta {
+            text-align: center;
+            background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.08));
+            border: 1px solid rgba(139,92,246,0.15); border-radius: 28px;
+            padding: 5rem 2rem; margin: 0 auto; max-width: 900px;
+        }
+        .cta .section-title { margin-bottom: 1rem; }
+        .cta .section-desc { margin: 0 auto 2.5rem; }
+        .download-buttons {
+            display: flex; justify-content: center; align-items: center; gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .store-button {
+            display: inline-flex; align-items: center; gap: 0.8rem;
+            min-width: 210px; padding: 0.9rem 1.25rem; border-radius: 16px;
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            color: var(--text-primary); text-decoration: none; text-align: left;
+            transition: transform 0.25s, border-color 0.25s, background 0.25s, box-shadow 0.25s;
+        }
+        .store-button:hover {
+            transform: translateY(-2px);
+            border-color: var(--border-hover);
+            background: var(--bg-card-hover);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+        }
+        .store-icon {
+            width: 36px; height: 36px; border-radius: 10px;
+            display: inline-flex; align-items: center; justify-content: center;
+            flex: 0 0 36px;
+        }
+        .store-icon svg { width: 22px; height: 22px; }
+        .store-icon-harmony { background: rgba(16,185,129,0.14); color: var(--accent-emerald); }
+        .store-icon-ios { background: rgba(59,130,246,0.14); color: var(--accent-blue); }
+        .store-copy {
+            display: flex; flex-direction: column; gap: 0.1rem;
+        }
+        .store-label {
+            color: var(--text-tertiary); font-size: 0.72rem; font-weight: 600;
+            letter-spacing: 0.04em; text-transform: uppercase;
+        }
+        .store-name {
+            color: var(--text-primary); font-size: 0.95rem; font-weight: 700;
+        }
+
+        /* ---- Footer ---- */
+        footer {
+            border-top: 1px solid var(--border-subtle);
+            padding: 3rem 2rem 2rem; max-width: 1200px; margin: 4rem auto 0;
+        }
+        .footer-top {
+            display: flex; justify-content: space-between; align-items: flex-start;
+            flex-wrap: wrap; gap: 2rem; margin-bottom: 2.5rem;
+        }
+        .footer-brand { max-width: 300px; }
+        .footer-brand .nav-brand { margin-bottom: 0.75rem; }
+        .footer-brand p { font-size: 0.85rem; color: var(--text-tertiary); line-height: 1.6; }
+        .footer-links-group { display: flex; gap: 4rem; flex-wrap: wrap; }
+        .footer-col h4 { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); margin-bottom: 0.75rem; }
+        .footer-col a { display: block; font-size: 0.88rem; color: var(--text-tertiary); text-decoration: none; padding: 0.25rem 0; transition: color 0.25s; }
+        .footer-col a:hover { color: var(--text-primary); }
+        .footer-bottom {
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 1rem; padding-top: 1.5rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+        .footer-copy { font-size: 0.8rem; color: var(--text-tertiary); }
+        .footer-legal { display: flex; gap: 1.5rem; }
+        .footer-legal a { font-size: 0.8rem; color: var(--text-tertiary); text-decoration: none; transition: color 0.25s; }
+        .footer-legal a:hover { color: var(--text-primary); }
+
+        /* ---- Responsive ---- */
+        /* ---- Light mode ambient ---- */
+        html[data-theme="light"] .ambient-bg .orb { opacity: 0.08; }
+        html[data-theme="light"] .hero-badge { background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.18); color: #7C3AED; }
+        html[data-theme="light"] .hero-badge .dot { background: #7C3AED; }
+        html[data-theme="light"] .btn-outline { border-color: rgba(0,0,0,0.12); color: var(--text-primary); }
+        html[data-theme="light"] .btn-outline:hover { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.2); }
+        html[data-theme="light"] .feature-card::before {
+            background: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(0,0,0,0.03), transparent 40%);
+        }
+
+        @media (max-width: 768px) {
+            nav { padding: 0.75rem 1.25rem; }
+            .nav-links { display: none; }
+            section { padding: 4rem 1.25rem; }
+            .hero { flex-direction: column; text-align: center; padding-top: 6rem; gap: 2rem; }
+            .hero-desc { margin-left: auto; margin-right: auto; }
+            .hero-actions { justify-content: center; }
+            .hero-image { max-width: 360px; }
+            .stats-bar { gap: 2rem; }
+            .features-grid { grid-template-columns: 1fr; }
+            .footer-links-group { gap: 2rem; }
+            .cta { padding: 3rem 1.5rem; border-radius: 20px; }
+            .download-buttons { flex-direction: column; align-items: stretch; }
+            .store-button { width: 100%; min-width: 0; justify-content: flex-start; }
+        }
+
+        /* ---- Scroll Reveal ---- */
+        .reveal {
+            opacity: 0; transform: translateY(30px);
+            transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+        }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+    </style>
+</head>
+<body>
+
+<div class="ambient-bg">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+</div>
+
+<nav id="navbar">
+    <a href="#" class="nav-brand">
+        <img src="logo.png" alt="CopoHub">
+        CopoHub
+    </a>
+    <div class="nav-links">
+        <a href="#features" data-i18n="nav.features">功能特性</a>
+        <a href="#highlights" data-i18n="nav.highlights">产品亮点</a>
+        <a href="https://github.fq6825.top" target="_blank" data-i18n="nav.web">网页版</a>
+        <a href="mailto:youdroid2048@gmail.com" data-i18n="nav.contact">联系我们</a>
+        <span class="theme-switch" id="themeSwitch" onclick="toggleTheme()">☀️</span>
+        <span class="lang-switch" id="langSwitch" onclick="toggleLang()">🌐 EN</span>
+    </div>
+</nav>
+
+<div class="page-wrapper">
+
+    <!-- Hero -->
+    <section class="hero" id="hero">
+        <div class="hero-text">
+            <div class="hero-badge"><span class="dot"></span> <span data-i18n="hero.badge">HarmonyOS 与 iOS 双平台</span></div>
+            <h1 data-i18n="hero.title" data-i18n-html="1">探索 GitHub<br>前所未有的<span class="gradient-text">全新体验</span></h1>
+            <p class="hero-desc" data-i18n="hero.desc">CopoHub 将趋势仓库、AI 驱动的代码分析以及完整的 GitHub 世界，带到 HarmonyOS 与 iOS 双平台体验中。</p>
+            <div class="hero-actions">
+                <a href="#cta" class="btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span data-i18n="hero.download">立即下载</span>
+                </a>
+                <a href="#features" class="btn-outline" data-i18n="hero.explore">探索功能</a>
+            </div>
+        </div>
+        <div class="hero-image">
+            <img src="hero-mockup.png" alt="CopoHub App Preview" loading="eager">
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <div class="stats-bar">
+        <div class="stat-item"><div class="stat-num">50+</div><div class="stat-label" data-i18n="stat.api">GitHub API 接口</div></div>
+        <div class="stat-item"><div class="stat-num">AI</div><div class="stat-label" data-i18n="stat.ai">智能驱动分析</div></div>
+        <div class="stat-item"><div class="stat-num">∞</div><div class="stat-label" data-i18n="stat.repos">无限仓库探索</div></div>
+    </div>
+
+    <!-- Features -->
+    <section class="features" id="features">
+        <div class="features-header reveal">
+            <div class="section-label" data-i18n="feat.label">✦ 功能特性</div>
+            <h2 class="section-title" data-i18n="feat.title" data-i18n-html="1">你需要的一切，<br>尽在掌中</h2>
+            <p class="section-desc" data-i18n="feat.desc">从每日趋势速递到深度代码探索 — CopoHub 是你探索开源世界的指挥中心。</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card reveal">
+                <div class="feature-icon fi-amber">🔥</div>
+                <h3 data-i18n="feat.f1.t">趋势发现</h3>
+                <p data-i18n="feat.f1.d">AI 策划的每日报告呈现最热门仓库。按语言、时间段和话题筛选，不错过任何趋势。</p>
+            </div>
+            <div class="feature-card reveal">
+                <div class="feature-icon fi-purple">🤖</div>
+                <h3 data-i18n="feat.f2.t">AI 代码分析</h3>
+                <p data-i18n="feat.f2.d">一键深度分析任意仓库 — 架构拆解、代码质量洞察、AI 驱动的智能摘要。</p>
+            </div>
+            <div class="feature-card reveal">
+                <div class="feature-icon fi-blue">📂</div>
+                <h3 data-i18n="feat.f3.t">完整仓库浏览</h3>
+                <p data-i18n="feat.f3.d">语法高亮浏览文件，查看提交历史、代码差异、Issue 和 PR — 全部原生体验。</p>
+            </div>
+            <div class="feature-card reveal">
+                <div class="feature-icon fi-emerald">📊</div>
+                <h3 data-i18n="feat.f4.t">贡献热力图</h3>
+                <p data-i18n="feat.f4.d">通过交互式贡献日历可视化你的 GitHub 活动，追踪你的开源之旅。</p>
+            </div>
+            <div class="feature-card reveal">
+                <div class="feature-icon fi-rose">🔔</div>
+                <h3 data-i18n="feat.f5.t">智能通知</h3>
+                <p data-i18n="feat.f5.d">实时掌握提及、Review 和 Issue 更新。剪贴板检测自动打开你复制的 GitHub 链接。</p>
+            </div>
+            <div class="feature-card reveal">
+                <div class="feature-icon fi-cyan">🌓</div>
+                <h3 data-i18n="feat.f6.t">自适应主题</h3>
+                <p data-i18n="feat.f6.d">精美的深色和浅色主题，无缝跟随系统偏好。手机、平板和折叠屏全面适配。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Highlights -->
+    <section class="highlights" id="highlights">
+        <div class="highlights-header reveal">
+            <div class="section-label" data-i18n="hl.label">✦ 为何选择 CopoHub</div>
+            <h2 class="section-title" data-i18n="hl.title">与众不同</h2>
+            <p class="section-desc" data-i18n="hl.desc">原生性能、精心设计与开发者优先的功能，让 CopoHub 成为你值得拥有的 GitHub 客户端。</p>
+        </div>
+        <div class="highlight-cards">
+            <div class="highlight-card reveal"><span class="highlight-emoji">⚡</span><h3 data-i18n="hl.h1.t">原生速度</h3><p data-i18n="hl.h1.d">面向 HarmonyOS 与 iOS 优化，带来流畅、稳定的移动端体验。</p></div>
+            <div class="highlight-card reveal"><span class="highlight-emoji">🔒</span><h3 data-i18n="hl.h2.t">安全认证</h3><p data-i18n="hl.h2.d">支持 GitHub OAuth 2.0 与 Device Flow，Token 永不离开你的设备。</p></div>
+            <div class="highlight-card reveal"><span class="highlight-emoji">🎨</span><h3 data-i18n="hl.h3.t">精致设计</h3><p data-i18n="hl.h3.d">每个像素都精心打磨。毛玻璃效果、微动效与流畅过渡。</p></div>
+            <div class="highlight-card reveal"><span class="highlight-emoji">📱</span><h3 data-i18n="hl.h4.t">多设备适配</h3><p data-i18n="hl.h4.d">为手机、平板与折叠屏设备优化的布局。</p></div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section>
+        <div class="cta reveal" id="cta">
+            <div class="section-label" data-i18n="cta.label">✦ 开始使用</div>
+            <h2 class="section-title" data-i18n="cta.title">准备好探索了吗？</h2>
+            <p class="section-desc" data-i18n="cta.desc">下载 CopoHub，在 HarmonyOS 与 iOS 上探索 GitHub 的全部力量。</p>
+            <div class="download-buttons" aria-label="Download CopoHub">
+                <a class="store-button" href="https://appgallery.huawei.com/app/detail?id=com.youdroid.copohub&channelId=SHARE&source=appshare" target="_blank" rel="noopener noreferrer">
+                    <span class="store-icon store-icon-harmony" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/>
+                            <path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span class="store-copy">
+                        <span class="store-label" data-i18n="download.harmony.label">获取 HarmonyOS 版</span>
+                        <span class="store-name" data-i18n="download.harmony.name">华为应用市场</span>
+                    </span>
+                </a>
+                <a class="store-button" href="https://apps.apple.com/cn/app/copohub/id6749193838" target="_blank" rel="noopener noreferrer">
+                    <span class="store-icon store-icon-ios" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M16.2 12.2c0-2.1 1.7-3.1 1.8-3.2-1-1.5-2.5-1.7-3.1-1.7-1.3-.1-2.5.8-3.2.8-.7 0-1.8-.8-2.9-.7-1.5 0-2.9.9-3.7 2.2-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.7 0 0-3.1-1.2-3.1-4z"/>
+                            <path d="M14.1 5.9c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.7-1.1 1.7-.9 2.6.9.1 1.9-.5 2.5-1.2z"/>
+                        </svg>
+                    </span>
+                    <span class="store-copy">
+                        <span class="store-label" data-i18n="download.ios.label">获取 iOS 版</span>
+                        <span class="store-name" data-i18n="download.ios.name">App Store</span>
+                    </span>
+                </a>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Footer -->
+<footer>
+    <div class="footer-top">
+        <div class="footer-brand">
+            <a href="#" class="nav-brand">
+                <img src="logo.png" alt="CopoHub" width="28" height="28">
+                CopoHub
+            </a>
+            <p data-i18n="footer.desc">面向 HarmonyOS 与 iOS 的现代 GitHub 客户端。探索、分析和管理你的开源世界。</p>
+        </div>
+        <div class="footer-links-group">
+            <div class="footer-col">
+                <h4 data-i18n="footer.product">产品</h4>
+                <a href="#features" data-i18n="nav.features">功能特性</a>
+                <a href="#highlights" data-i18n="footer.why">为何选择 CopoHub</a>
+                <a href="https://github.fq6825.top" target="_blank" data-i18n="nav.web">网页版</a>
+                <a href="#cta" data-i18n="footer.dl">下载</a>
+            </div>
+            <div class="footer-col">
+                <h4 data-i18n="footer.legal">法律条款</h4>
+                <a href="privacy.html" data-i18n="footer.privacy">隐私政策</a>
+                <a href="terms.html" data-i18n="footer.terms">用户协议</a>
+            </div>
+            <div class="footer-col">
+                <h4 data-i18n="nav.contact">联系我们</h4>
+                <a href="mailto:youdroid2048@gmail.com">youdroid2048@gmail.com</a>
+            </div>
+        </div>
+    </div>
+    <div class="footer-bottom">
+        <span class="footer-copy">&copy; 2025-2026 Copohub. All rights reserved.</span>
+        <div class="footer-legal">
+            <a href="privacy.html" data-i18n="footer.privacy">隐私政策</a>
+            <a href="terms.html" data-i18n="footer.terms">用户协议</a>
+        </div>
+    </div>
+</footer>
+
+<script>
+// ---- i18n ----
+const EN = {
+    'nav.features': 'Features', 'nav.highlights': 'Highlights', 'nav.contact': 'Contact', 'nav.web': 'Web Version',
+    'hero.badge': 'Available on HarmonyOS and iOS',
+    'hero.title': 'Explore GitHub<br>Like <span class="gradient-text">Never Before</span>',
+    'hero.desc': 'CopoHub brings trending repos, AI-powered code analysis, and your entire GitHub world to HarmonyOS and iOS.',
+    'hero.download': 'Download Now', 'hero.explore': 'Explore Features',
+    'stat.api': 'GitHub API Endpoints', 'stat.ai': 'Powered Analysis', 'stat.repos': 'Repos to Discover',
+    'feat.label': '✦ Features',
+    'feat.title': 'Everything You Need,<br>Right in Your Pocket',
+    'feat.desc': 'From daily trending digests to deep code exploration — CopoHub is your command center for the open-source universe.',
+    'feat.f1.t': 'Trending Discovery', 'feat.f1.d': 'AI-curated daily reports surface the hottest repositories. Filter by language, timeframe, and topic to never miss a trend.',
+    'feat.f2.t': 'AI Code Analysis', 'feat.f2.d': 'One-tap deep analysis of any repository — architecture breakdowns, code quality insights, and smart summaries powered by AI.',
+    'feat.f3.t': 'Full Repo Explorer', 'feat.f3.d': 'Browse files with syntax highlighting, view commit history, diffs, issues, and pull requests — all in a native experience.',
+    'feat.f4.t': 'Contribution Heatmap', 'feat.f4.d': 'Visualize your GitHub activity with an interactive contribution calendar. Track your open-source journey over time.',
+    'feat.f5.t': 'Smart Notifications', 'feat.f5.d': 'Stay on top of mentions, reviews, and issue updates. Clipboard detection auto-opens GitHub links you copy.',
+    'feat.f6.t': 'Adaptive Theming', 'feat.f6.d': 'Beautiful dark and light themes that seamlessly follow your system preference. Responsive design for phone, tablet, and 2-in-1.',
+    'hl.label': '✦ Why CopoHub', 'hl.title': 'Built Different',
+    'hl.desc': 'Native performance, thoughtful design, and developer-first features make CopoHub the GitHub client you deserve.',
+    'hl.h1.t': 'Native Speed', 'hl.h1.d': 'Optimized for HarmonyOS and iOS, delivering a smooth and stable mobile experience.',
+    'hl.h2.t': 'Secure Auth', 'hl.h2.d': 'GitHub OAuth 2.0 with Device Flow. Your token never leaves your device.',
+    'hl.h3.t': 'Premium Design', 'hl.h3.d': 'Every pixel is crafted. Glassmorphism, micro-animations, and fluid transitions.',
+    'hl.h4.t': 'Multi-Device', 'hl.h4.d': 'Optimized layouts for phones, tablets, and 2-in-1 foldable devices.',
+    'cta.label': '✦ Get Started', 'cta.title': 'Ready to Explore?',
+    'cta.desc': 'Download CopoHub and unlock the full power of GitHub on HarmonyOS and iOS.',
+    'download.harmony.label': 'Get the HarmonyOS app',
+    'download.harmony.name': 'Huawei AppGallery',
+    'download.ios.label': 'Get the iOS app',
+    'download.ios.name': 'App Store',
+    'footer.desc': 'A modern GitHub client for HarmonyOS and iOS. Explore, analyze, and manage your open-source world.',
+    'footer.product': 'Product', 'footer.why': 'Why CopoHub', 'footer.dl': 'Download',
+    'footer.legal': 'Legal', 'footer.privacy': 'Privacy Policy', 'footer.terms': 'Terms of Service'
+};
+
+const ZH = {};
+// Capture initial Chinese text from DOM as the ZH dictionary
+document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    ZH[key] = el.hasAttribute('data-i18n-html') ? el.innerHTML : el.textContent;
+});
+
+let currentLang = 'zh';
+
+function applyLang(lang) {
+    const dict = lang === 'en' ? EN : ZH;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (!dict[key]) return;
+        if (el.hasAttribute('data-i18n-html')) {
+            el.innerHTML = dict[key];
+        } else {
+            el.textContent = dict[key];
+        }
+    });
+    document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+    document.getElementById('langSwitch').textContent = lang === 'zh' ? '🌐 EN' : '🌐 中文';
+    currentLang = lang;
+    localStorage.setItem('copohub-lang', lang);
+}
+
+function toggleLang() {
+    applyLang(currentLang === 'zh' ? 'en' : 'zh');
+}
+
+// ---- Theme ----
+let currentTheme = localStorage.getItem('copohub-theme') || 'dark';
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : '');
+    document.getElementById('themeSwitch').textContent = theme === 'light' ? '🌙' : '☀️';
+    currentTheme = theme;
+    localStorage.setItem('copohub-theme', theme);
+}
+function toggleTheme() {
+    applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+}
+if (currentTheme === 'light') applyTheme('light');
+
+// Restore saved preference
+const saved = localStorage.getItem('copohub-lang');
+if (saved && saved !== 'zh') applyLang(saved);
+
+// ---- Scroll reveal ----
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// ---- Card hover glow ----
+document.querySelectorAll('.feature-card').forEach(card => {
+    card.addEventListener('mousemove', (e) => {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty('--mouse-x', (e.clientX - r.left) + 'px');
+        card.style.setProperty('--mouse-y', (e.clientY - r.top) + 'px');
+    });
+});
+
+// ---- Navbar scroll ----
+window.addEventListener('scroll', () => {
+    const nav = document.getElementById('navbar');
+    const style = getComputedStyle(document.documentElement);
+    nav.style.background = window.scrollY > 60 ? style.getPropertyValue('--nav-bg-scroll') : style.getPropertyValue('--nav-bg');
+});
+</script>
+</body>
+</html>

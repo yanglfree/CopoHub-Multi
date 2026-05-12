@@ -16,12 +16,20 @@ import 'router/app_router.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await ApiCache.init();
+    // 8-second timeout guards against Hive/file-system hangs on some
+    // HarmonyOS 2-in-1 devices where openBox can block indefinitely.
+    await ApiCache.init().timeout(const Duration(seconds: 8), onTimeout: () {
+      debugPrint('ApiCache.init timed out (non-fatal)');
+    });
   } catch (e) {
     debugPrint('ApiCache.init failed (non-fatal): $e');
   }
   try {
-    await ProMemberService.instance.initialize();
+    await ProMemberService.instance
+        .initialize()
+        .timeout(const Duration(seconds: 8), onTimeout: () {
+      debugPrint('ProMemberService.initialize timed out (non-fatal)');
+    });
   } catch (e) {
     debugPrint('ProMemberService.initialize failed (non-fatal): $e');
   }
