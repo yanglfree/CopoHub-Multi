@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -13,8 +12,10 @@ import '../../models/repository.dart';
 import '../../services/share_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/link_utils.dart';
-
-const _readmeAnchorMarker = 'copohub-readme-anchor';
+import 'readme_document.dart';
+import 'repository_branch_creator.dart';
+import 'repository_paged_list.dart';
+import 'repository_refs.dart';
 
 /// Repository detail page — README / 代码 / Issues / Commits / Releases tabs.
 class RepositoryPage extends StatefulWidget {
@@ -152,6 +153,16 @@ class _RepositoryPageState extends State<RepositoryPage>
     if (result.isSuccess) {
       setState(() => _tags = result.data ?? []);
     }
+  }
+
+  void _handleBranchCreated(String name, String sha) {
+    setState(() {
+      _branches = RepositoryRefs.withCreatedBranch(
+        _branches,
+        name: name,
+        sha: sha,
+      );
+    });
   }
 
   Future<void> _toggleStar() async {
@@ -297,7 +308,8 @@ class _RepositoryPageState extends State<RepositoryPage>
                   defaultBranch: repo.defaultBranch,
                   branches: _branches,
                   tags: _tags,
-                  scrollResetVersion: _tabScrollResetVersions[1]),
+                  scrollResetVersion: _tabScrollResetVersions[1],
+                  onBranchCreated: _handleBranchCreated),
               _IssuesTab(
                   owner: widget.owner,
                   repo: widget.repo,
@@ -308,7 +320,8 @@ class _RepositoryPageState extends State<RepositoryPage>
                   defaultBranch: repo.defaultBranch,
                   branches: _branches,
                   tags: _tags,
-                  scrollResetVersion: _tabScrollResetVersions[3]),
+                  scrollResetVersion: _tabScrollResetVersions[3],
+                  onBranchCreated: _handleBranchCreated),
               _ReleasesTab(
                   owner: widget.owner,
                   repo: widget.repo,
@@ -743,7 +756,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
   bool _loading = true;
   bool _hasError = false;
   String? _markdown;
-  List<({bool isTable, String content, GlobalKey? anchorKey})> _readmeSections =
+  List<({ReadmeSection section, GlobalKey? anchorKey})> _readmeSections =
       const [];
   final Map<String, GlobalKey> _anchorKeys = {};
 
@@ -787,17 +800,17 @@ class _ReadmeTabState extends State<_ReadmeTab>
 
     if (result.isSuccess) {
       final data = result.data;
-      final encoded = data?['content'] as String? ?? '';
-      final encoding = (data?['encoding'] as String? ?? 'base64').toLowerCase();
-      final text = _decodeReadmeContent(encoded, encoding);
-      if (text != null && text.trim().isNotEmpty) {
-        final markdown = _stripHtmlForMarkdown(text);
-        final sections = _splitReadmeSections(markdown);
+      final document = ReadmeDocumentParser.parseEncodedContent(
+        content: data?['content'] as String? ?? '',
+        encoding: (data?['encoding'] as String? ?? 'base64').toLowerCase(),
+      );
+      if (document != null && document.markdown.trim().isNotEmpty) {
+        final sections = _buildRenderSections(document.sections);
         setState(() {
           _readmePath = data?['path'] as String? ?? 'README.md';
           _downloadUrl = data?['download_url'] as String? ?? '';
           _htmlUrl = data?['html_url'] as String? ?? '';
-          _markdown = markdown;
+          _markdown = document.markdown;
           _readmeSections = sections;
           _loading = false;
           _hasError = false;
@@ -813,310 +826,41 @@ class _ReadmeTabState extends State<_ReadmeTab>
     });
   }
 
-  /// Preprocess raw GitHub README markdown:
-  /// - Converts common HTML tags to markdown equivalents (bold, italic, links, images)
-  /// - Strips remaining HTML so flutter_markdown doesn't show raw angle-bracket tags
-  String _stripHtmlForMarkdown(String src) {
-    var s = src;
-
-    // 1. Drop HTML comments first so they don't interfere with later regexes.
-    s = s.replaceAll(RegExp(r'<!--[\s\S]*?-->', caseSensitive: false), '');
-
-    // 2. Erase opaque blocks entirely (script/style/svg/iframe content).
-    s = s.replaceAllMapped(
-      RegExp(
-        r'<(script|style|iframe|svg|video|audio|object)\b[^>]*?>[\s\S]*?</\1>',
-        caseSensitive: false,
-      ),
-      (_) => '',
-    );
-
-    // 3. Convert <pre><code>…</code></pre> → fenced code block.
-    s = s.replaceAllMapped(
-      RegExp(
-        r'<pre\b[^>]*?>\s*<code\b[^>]*?>([\s\S]*?)</code>\s*</pre>',
-        caseSensitive: false,
-      ),
-      (m) => '\n```\n${_unescapeHtmlEntities(m.group(1)!)}\n```\n',
-    );
-    s = s.replaceAllMapped(
-      RegExp(r'<pre\b[^>]*?>([\s\S]*?)</pre>', caseSensitive: false),
-      (m) => '\n```\n${_unescapeHtmlEntities(m.group(1)!)}\n```\n',
-    );
-
-    // 4. Convert <img> → markdown image ![]().
-    s = s.replaceAllMapped(
-      RegExp(
-        r'''<img\b[^>]*?\bsrc\s*=\s*(["'])([^"']*)\1[^>]*?/?>''',
-        caseSensitive: false,
-      ),
-      (m) {
-        final src = m.group(2) ?? '';
-        final raw = m.group(0)!;
-        final altM = RegExp(
-          r'''\balt\s*=\s*(["'])([^"']*)\1''',
-          caseSensitive: false,
-        ).firstMatch(raw);
-        return '![${altM?.group(2) ?? ''}]($src)';
-      },
-    );
-
-    // 5. Convert <a href="…">text</a> → [text](href).
-    s = s.replaceAllMapped(
-      RegExp(
-        r'''<a\b[^>]*?\bhref\s*=\s*(["'])([^"']*)\1[^>]*?>([\s\S]*?)</a>''',
-        caseSensitive: false,
-      ),
-      (m) {
-        final href = _unescapeHtmlEntities(m.group(2) ?? '');
-        final text = _unescapeHtmlEntities(
-          (m.group(3) ?? '').replaceAll(RegExp(r'<[^>]+>'), '').trim(),
-        );
-        return text.isEmpty ? '' : '[$text]($href)';
-      },
-    );
-
-    // 5.5 Preserve explicit HTML heading ids used by GitHub README tables of
-    // contents. The marker is removed before markdown rendering.
-    s = s.replaceAllMapped(
-      RegExp(
-        r'''<h([1-6])\b([^>]*)>([\s\S]*?)</h\1>''',
-        caseSensitive: false,
-      ),
-      (m) {
-        final attrs = m.group(2) ?? '';
-        final idMatch = RegExp(
-          r'''\bid\s*=\s*(["'])([^"']+)\1''',
-          caseSensitive: false,
-        ).firstMatch(attrs);
-        final id = _unescapeHtmlEntities(idMatch?.group(2) ?? '').trim();
-        final body = m.group(3) ?? '';
-        if (id.isEmpty) return body;
-        return '\n<$_readmeAnchorMarker id="$id" />\n$body\n';
-      },
-    );
-
-    // 6. Convert inline formatting HTML → markdown equivalents.
-    s = s.replaceAllMapped(
-      RegExp(r'<(b|strong)\b[^>]*?>([\s\S]*?)</(b|strong)>',
-          caseSensitive: false),
-      (m) => '**${m.group(2)}**',
-    );
-    s = s.replaceAllMapped(
-      RegExp(r'<(i|em)\b[^>]*?>([\s\S]*?)</(i|em)>', caseSensitive: false),
-      (m) => '_${m.group(2)}_',
-    );
-    s = s.replaceAllMapped(
-      RegExp(r'<(del|s|strike)\b[^>]*?>([\s\S]*?)</(del|s|strike)>',
-          caseSensitive: false),
-      (m) => '~~${m.group(2)}~~',
-    );
-    s = s.replaceAllMapped(
-      RegExp(r'<code\b[^>]*?>([\s\S]*?)</code>', caseSensitive: false),
-      (m) => '`${_unescapeHtmlEntities(m.group(1)!)}`',
-    );
-
-    // 7. Convert <br> to newline.
-    s = s.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
-
-    // 8. Strip remaining HTML container/block tags, keeping their inner text.
-    s = s.replaceAll(
-      RegExp(
-        r'</?(?:div|span|p|section|article|header|footer|nav|main|aside|center'
-        r'|details|summary|table|thead|tbody|tr|td|th|font|small|big|sub|sup'
-        r'|kbd|mark|figure|figcaption|picture|source|h[1-6])\b[^>]*?>',
-        caseSensitive: false,
-      ),
-      '',
-    );
-
-    // 9. Drop standalone void/self-closing tags we have no markdown mapping for.
-    s = s.replaceAll(
-      RegExp(
-        r'<(?:input|meta|link|embed)\b[^>]*?/?>',
-        caseSensitive: false,
-      ),
-      '',
-    );
-
-    // 10. Remove leading whitespace from image lines so they are not
-    // misinterpreted as indented code blocks (4-space rule) by the parser.
-    s = s.replaceAllMapped(
-      RegExp(r'^[^\S\n]+(![\[\(])', multiLine: true),
-      (m) => m.group(1)!,
-    );
-
-    // 11. Unescape remaining HTML entities in the full text.
-    s = _unescapeHtmlEntities(s);
-
-    return s;
-  }
-
-  String _unescapeHtmlEntities(String s) => s
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&#39;', "'")
-      // Match &nbsp; with or without the trailing semicolon (some READMEs omit it).
-      .replaceAll(RegExp(r'&nbsp;?'), '\u00a0');
-
-  /// Splits [text] into render sections.
-  ///
-  /// Markdown table blocks (lines whose first non-space character is `|`) get
-  /// their own horizontal scroll container. Headings also start a new section so
-  /// page-local README anchors can scroll to the exact paragraph.
-  List<({bool isTable, String content, GlobalKey? anchorKey})>
-      _splitReadmeSections(String text) {
-    _anchorKeys.clear();
-    final sections = <({bool isTable, String content, GlobalKey? anchorKey})>[];
-    final buf = StringBuffer();
-    bool inTable = false;
-    GlobalKey? anchorKey;
-    final anchorCounts = <String, int>{};
-
-    void flush() {
-      final s = buf.toString();
-      if (s.trim().isNotEmpty) {
-        sections.add((isTable: inTable, content: s, anchorKey: anchorKey));
-      }
-      buf.clear();
-      anchorKey = null;
-    }
-
-    for (final line in text.split('\n')) {
-      final explicitAnchor = _htmlAnchorId(line);
-      if (explicitAnchor != null) {
-        flush();
-        inTable = false;
-        anchorKey = _registerExplicitAnchor(explicitAnchor);
-        continue;
-      }
-
-      final headingText = _headingText(line);
-      if (headingText != null) {
-        flush();
-        inTable = false;
-        anchorKey = _registerHeadingAnchor(headingText, anchorCounts);
-        buf.writeln(line);
-        continue;
-      }
-
-      final tableRow = line.trimLeft().startsWith('|');
-      if (tableRow != inTable) {
-        flush();
-        inTable = tableRow;
-      }
-      buf.writeln(line);
-    }
-    flush();
-    return sections;
-  }
-
-  String? _htmlAnchorId(String line) {
-    final match = RegExp(
-      '^<$_readmeAnchorMarker\\s+id="([^"]+)"\\s*/>\$',
-    ).firstMatch(line.trim());
-    return match?.group(1)?.trim();
-  }
-
-  String? _headingText(String line) {
-    final match = RegExp(r'^(#{1,6})[ \t]+(.+?)[ \t#]*$').firstMatch(line);
-    if (match == null) return null;
-    return match.group(2)?.trim();
-  }
-
-  GlobalKey _registerExplicitAnchor(String anchor) {
-    final key = GlobalKey();
-    final normalized = _normalizeAnchor(anchor);
-    _anchorKeys[normalized] = key;
-    _anchorKeys['user-content-$normalized'] = key;
-    return key;
-  }
-
-  GlobalKey _registerHeadingAnchor(
-    String heading,
-    Map<String, int> anchorCounts,
+  List<({ReadmeSection section, GlobalKey? anchorKey})> _buildRenderSections(
+    List<ReadmeSection> sections,
   ) {
-    final base = _githubAnchorSlugBase(heading);
-    final count = anchorCounts[base] ?? 0;
-    anchorCounts[base] = count + 1;
+    _anchorKeys.clear();
+    return [
+      for (final section in sections)
+        (
+          section: section,
+          anchorKey: section.anchorIds.isEmpty
+              ? null
+              : _registerSectionAnchors(section.anchorIds),
+        ),
+    ];
+  }
 
-    final slug = count == 0 ? base : '$base-$count';
+  GlobalKey _registerSectionAnchors(List<String> anchorIds) {
     final key = GlobalKey();
-    _anchorKeys[slug] = key;
-    _anchorKeys['user-content-$slug'] = key;
-
-    final plainBase = _plainAnchorSlugBase(heading);
-    if (plainBase.isNotEmpty && plainBase != base) {
-      final plainSlug = count == 0 ? plainBase : '$plainBase-$count';
-      _anchorKeys.putIfAbsent(plainSlug, () => key);
-      _anchorKeys.putIfAbsent('user-content-$plainSlug', () => key);
+    for (final anchor in anchorIds) {
+      if (anchor.isNotEmpty) {
+        _anchorKeys.putIfAbsent(anchor, () => key);
+      }
     }
-
     return key;
   }
 
-  String _githubAnchorSlugBase(String heading) {
-    final plain = _plainHeadingText(heading).toLowerCase();
-    final buf = StringBuffer();
-    var previousWasSpace = false;
-    final letterOrNumber = RegExp(r'[\p{L}\p{N}]', unicode: true);
-
-    for (final rune in plain.runes) {
-      final char = String.fromCharCode(rune);
-      final isLetterOrNumber = letterOrNumber.hasMatch(char);
-      final isWordPunctuation = char == '-' || char == '_';
-      final isSpace = char.trim().isEmpty;
-
-      if (isSpace) {
-        previousWasSpace = true;
-        continue;
-      }
-      if (isLetterOrNumber || isWordPunctuation) {
-        if (previousWasSpace && buf.isNotEmpty) buf.write('-');
-        buf.write(char);
-        previousWasSpace = false;
-      }
-    }
-
-    final slug = buf.toString().replaceAll(RegExp(r'-+'), '-');
-    return slug.isEmpty ? 'section' : slug;
-  }
-
-  String _plainAnchorSlugBase(String heading) {
-    final plain = _plainHeadingText(heading).toLowerCase().trim();
-    return plain.replaceAll(RegExp(r'\s+'), '-');
-  }
-
-  String _plainHeadingText(String heading) {
-    return _unescapeHtmlEntities(heading)
-        .replaceAll(RegExp(r'<[^>]+>'), '')
-        .replaceAllMapped(
-          RegExp(r'!\[([^\]]*)\]\([^)]+\)'),
-          (match) => match.group(1) ?? '',
-        )
-        .replaceAllMapped(
-          RegExp(r'\[([^\]]+)\]\([^)]+\)'),
-          (match) => match.group(1) ?? '',
-        )
-        .replaceAll(RegExp(r'[`*_~]'), '')
-        .replaceAllMapped(
-          RegExp(r'\\([\\`*_{}\[\]()#+\-.!])'),
-          (match) => match.group(1) ?? '',
-        )
-        .trim();
-  }
-
-  String? _decodeReadmeContent(String content, String encoding) {
-    if (content.isEmpty) return null;
-    if (encoding != 'base64') return content;
-    try {
-      return utf8.decode(base64Decode(content.replaceAll('\n', '')));
-    } catch (_) {
-      return null;
-    }
-  }
+  ReadmeLinkResolver get _readmeLinkResolver => ReadmeLinkResolver(
+        ReadmeLinkContext(
+          owner: widget.owner,
+          repo: widget.repo,
+          defaultBranch: widget.defaultBranch,
+          readmePath: _readmePath,
+          downloadUrl: _downloadUrl,
+          htmlUrl: _htmlUrl,
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1157,22 +901,25 @@ class _ReadmeTabState extends State<_ReadmeTab>
             styleSheet: style,
             onTapLink: (text, href, title) {
               if (href == null || href.isEmpty) return;
-              final tabIndex = _currentRepositoryTabIndex(href);
+              final resolver = _readmeLinkResolver;
+              final tabIndex = resolver.currentRepositoryTabIndex(href);
               if (tabIndex != null) {
                 widget.onOpenRepositoryTab(tabIndex);
                 return;
               }
-              final anchor = _currentReadmeAnchor(href);
+              final anchor = resolver.currentReadmeAnchor(href);
               if (anchor != null) {
                 _scrollToAnchor(anchor);
                 return;
               }
-              final resolved = _resolveReadmeUrl(href, forImage: false);
+              final resolved = resolver.resolve(href, forImage: false);
               dispatchLinkAction(context, resolved);
             },
             sizedImageBuilder: (config) {
-              final resolved =
-                  _resolveReadmeUrl(config.uri.toString(), forImage: true);
+              final resolved = _readmeLinkResolver.resolve(
+                config.uri.toString(),
+                forImage: true,
+              );
               if (resolved.isEmpty || resolved == 'about:blank') {
                 return const SizedBox.shrink();
               }
@@ -1221,7 +968,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final section in sections)
-            if (section.isTable)
+            if (section.section.isTable)
               // Wrap each table in its own horizontal scroll so wide tables
               // don't force text to wrap into unreadably narrow columns.
               KeyedSubtree(
@@ -1229,13 +976,13 @@ class _ReadmeTabState extends State<_ReadmeTab>
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: buildMarkdown(section.content, tableStyle),
+                  child: buildMarkdown(section.section.content, tableStyle),
                 ),
               )
             else
               KeyedSubtree(
                 key: section.anchorKey,
-                child: buildMarkdown(section.content, normalStyle),
+                child: buildMarkdown(section.section.content, normalStyle),
               ),
         ],
       ),
@@ -1301,164 +1048,8 @@ class _ReadmeTabState extends State<_ReadmeTab>
     );
   }
 
-  String _resolveReadmeUrl(String href, {bool forImage = false}) {
-    final trimmed = href.trim();
-    if (trimmed.isEmpty) return trimmed;
-
-    final uri = Uri.tryParse(trimmed);
-    if (uri != null && uri.hasScheme) {
-      final scheme = uri.scheme.toLowerCase();
-      if (scheme == 'http' || scheme == 'https' || scheme == 'mailto') {
-        return trimmed;
-      }
-      if (forImage && scheme == 'data') {
-        return trimmed;
-      }
-      return 'about:blank';
-    }
-
-    if (trimmed.startsWith('//')) {
-      return 'https:$trimmed';
-    }
-
-    if (trimmed.startsWith('#')) {
-      final base = _htmlUrl.isNotEmpty
-          ? _htmlUrl
-          : 'https://github.com/${widget.owner}/${widget.repo}';
-      return '$base$trimmed';
-    }
-
-    if (trimmed.startsWith('/')) {
-      final sitePath = trimmed.substring(1);
-      if (sitePath.startsWith('${widget.owner}/${widget.repo}/')) {
-        return 'https://github.com$trimmed';
-      }
-      final path = _normalizeRepoPath(trimmed.substring(1));
-      if (forImage) return _rawUrlFor(path);
-      return 'https://github.com/${widget.owner}/${widget.repo}/blob/${widget.defaultBranch}/$path';
-    }
-
-    final baseDir = _readmePath.contains('/')
-        ? _readmePath.substring(0, _readmePath.lastIndexOf('/'))
-        : '';
-    final joined = baseDir.isEmpty ? trimmed : '$baseDir/$trimmed';
-    final normalized = _normalizeRepoPath(joined);
-
-    if (forImage) {
-      if (_downloadUrl.isNotEmpty && normalized == _readmePath) {
-        return _downloadUrl;
-      }
-      return _rawUrlFor(normalized);
-    }
-
-    return 'https://github.com/${widget.owner}/${widget.repo}/blob/${widget.defaultBranch}/$normalized';
-  }
-
-  String? _currentReadmeAnchor(String href) {
-    final trimmed = href.trim();
-    if (trimmed.isEmpty) return null;
-
-    final uri = Uri.tryParse(trimmed);
-    if (uri == null || !uri.hasFragment || uri.fragment.isEmpty) return null;
-
-    if (trimmed.startsWith('#')) return uri.fragment;
-
-    if (uri.hasScheme) {
-      return _isCurrentReadmeGitHubUri(uri) ? uri.fragment : null;
-    }
-
-    if (trimmed.startsWith('//')) return null;
-
-    final baseDir = _readmePath.contains('/')
-        ? _readmePath.substring(0, _readmePath.lastIndexOf('/'))
-        : '';
-    final path = uri.path;
-    if (path.isEmpty) return uri.fragment;
-
-    final joined = path.startsWith('/')
-        ? path.substring(1)
-        : (baseDir.isEmpty ? path : '$baseDir/$path');
-    final normalized = _normalizeRepoPath(joined);
-    return normalized == _normalizeRepoPath(_readmePath) ? uri.fragment : null;
-  }
-
-  int? _currentRepositoryTabIndex(String href) {
-    final uri = Uri.tryParse(href.trim());
-    if (uri == null || uri.hasFragment) return null;
-
-    final pathSegments = _currentRepositoryPathSegments(uri, href);
-    if (pathSegments == null) return null;
-    if (pathSegments.isEmpty) return 0;
-
-    switch (pathSegments.first) {
-      case 'tree':
-        return pathSegments.length <= 2 ? 1 : null;
-      case 'issues':
-        return pathSegments.length == 1 ? 2 : null;
-      case 'pulls':
-        return pathSegments.length == 1 ? 2 : null;
-      case 'commits':
-        return pathSegments.length <= 2 ? 3 : null;
-      case 'releases':
-        return pathSegments.length == 1 ? 4 : null;
-      case 'tags':
-        return pathSegments.length == 1 ? 4 : null;
-      default:
-        return null;
-    }
-  }
-
-  List<String>? _currentRepositoryPathSegments(Uri uri, String href) {
-    final trimmed = href.trim();
-    if (uri.hasScheme) {
-      final host = uri.host.toLowerCase();
-      if (host != 'github.com' && host != 'www.github.com') return null;
-
-      final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-      if (segs.length < 2) return null;
-      if (segs[0].toLowerCase() != widget.owner.toLowerCase() ||
-          segs[1].toLowerCase() != widget.repo.toLowerCase()) {
-        return null;
-      }
-      return segs.sublist(2);
-    }
-
-    if (trimmed.startsWith('//')) return null;
-
-    final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-    if (trimmed.startsWith('/')) {
-      if (segs.length < 2) return null;
-      if (segs[0].toLowerCase() != widget.owner.toLowerCase() ||
-          segs[1].toLowerCase() != widget.repo.toLowerCase()) {
-        return null;
-      }
-      return segs.sublist(2);
-    }
-
-    return segs;
-  }
-
-  bool _isCurrentReadmeGitHubUri(Uri uri) {
-    final host = uri.host.toLowerCase();
-    if (host != 'github.com' && host != 'www.github.com') return false;
-
-    final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-    if (segs.length < 2) return false;
-    if (segs[0].toLowerCase() != widget.owner.toLowerCase() ||
-        segs[1].toLowerCase() != widget.repo.toLowerCase()) {
-      return false;
-    }
-
-    if (segs.length == 2) return true;
-    if (segs.length >= 5 && segs[2] == 'blob') {
-      final path = segs.sublist(4).join('/');
-      return _normalizeRepoPath(path) == _normalizeRepoPath(_readmePath);
-    }
-    return false;
-  }
-
   bool _scrollToAnchor(String anchor) {
-    final key = _anchorKeys[_normalizeAnchor(anchor)];
+    final key = _anchorKeys[ReadmeAnchors.normalize(anchor)];
     final targetContext = key?.currentContext;
     if (targetContext == null) return false;
 
@@ -1469,34 +1060,6 @@ class _ReadmeTabState extends State<_ReadmeTab>
       alignment: 0.08,
     );
     return true;
-  }
-
-  String _normalizeAnchor(String anchor) {
-    final trimmed = anchor.trim().replaceFirst(RegExp(r'^#'), '');
-    try {
-      return Uri.decodeComponent(trimmed).toLowerCase();
-    } catch (_) {
-      return trimmed.toLowerCase();
-    }
-  }
-
-  String _rawUrlFor(String path) =>
-      'https://raw.githubusercontent.com/${widget.owner}/${widget.repo}/${_encodePath(widget.defaultBranch)}/${_encodePath(path)}';
-
-  String _encodePath(String path) =>
-      path.split('/').map(Uri.encodeComponent).join('/');
-
-  String _normalizeRepoPath(String path) {
-    final output = <String>[];
-    for (final part in path.split('/')) {
-      if (part.isEmpty || part == '.') continue;
-      if (part == '..') {
-        if (output.isNotEmpty) output.removeLast();
-        continue;
-      }
-      output.add(part);
-    }
-    return output.join('/');
   }
 }
 
@@ -1510,6 +1073,7 @@ class _CodeTab extends StatefulWidget {
     required this.branches,
     required this.tags,
     required this.scrollResetVersion,
+    required this.onBranchCreated,
   });
   final String owner;
   final String repo;
@@ -1517,6 +1081,7 @@ class _CodeTab extends StatefulWidget {
   final List<Map<String, dynamic>> branches;
   final List<Map<String, dynamic>> tags;
   final int scrollResetVersion;
+  final void Function(String name, String sha) onBranchCreated;
 
   @override
   State<_CodeTab> createState() => _CodeTabState();
@@ -1524,6 +1089,8 @@ class _CodeTab extends StatefulWidget {
 
 class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
   final _api = GitHubApiClient.instance;
+  late final RepositoryBranchCreator _branchCreator =
+      RepositoryBranchCreator(createBranch: _api.createBranch);
 
   String _selectedBranch = '';
   // Stack of (path, displayName) for breadcrumb navigation
@@ -1620,31 +1187,18 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
     final l10n = AppLocalizations.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
-    // Find source branch's commit SHA
-    final sourceBranchInfo =
-        widget.branches.cast<Map<String, dynamic>?>().firstWhere(
-              (b) => b != null && b['name'] == sourceRef,
-              orElse: () => null,
-            );
-    final baseSha = sourceBranchInfo?['commit']?['sha'] as String?;
-
-    if (baseSha == null) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text(l10n.createBranchFailed)),
-      );
-      return;
-    }
-
     setState(() {
       _loading = true;
       _error = '';
     });
 
-    final result = await _api.createBranch(
+    final result = await _branchCreator.create(
       owner: widget.owner,
       repo: widget.repo,
       newBranchName: newName,
-      baseSha: baseSha,
+      sourceRef: sourceRef,
+      branches: widget.branches,
+      fallbackErrorMessage: l10n.createBranchFailed,
     );
 
     if (!mounted) return;
@@ -1653,12 +1207,7 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text(l10n.createBranchSuccess)),
       );
-      // We cannot call _loadBranches() directly as it's in the parent state.
-      // For now, we manually update the local state.
-      widget.branches.insert(0, {
-        'name': newName,
-        'commit': {'sha': baseSha},
-      });
+      widget.onBranchCreated(newName, result.baseSha!);
       setState(() {
         _selectedBranch = newName;
         _pathStack.clear();
@@ -1667,10 +1216,10 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
     } else {
       setState(() {
         _loading = false;
-        _error = result.message ?? l10n.createBranchFailed;
+        _error = result.message;
       });
       scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text(result.message ?? l10n.createBranchFailed)),
+        SnackBar(content: Text(result.message)),
       );
     }
   }
@@ -1940,16 +1489,15 @@ class _IssuesTab extends StatefulWidget {
 
 class _IssuesTabState extends State<_IssuesTab>
     with AutomaticKeepAliveClientMixin {
+  static const _pageSize = 30;
+
   final _api = GitHubApiClient.instance;
-  List<Map<String, dynamic>> _issues = [];
-  bool _loading = false;
-  bool _hasMore = true;
-  int _page = 1;
+  RepositoryPagedList<Map<String, dynamic>> _issues =
+      const RepositoryPagedList.initial();
   // 'all' | 'open' | 'closed'
   String _state = 'open';
   // 'all' | 'issues' | 'pulls'
   String _typeFilter = 'all';
-  String _error = '';
 
   int? _issueCount;
   int? _prCount;
@@ -1981,14 +1529,10 @@ class _IssuesTabState extends State<_IssuesTab>
   }
 
   Future<void> _load({bool refresh = false}) async {
-    if (_loading) return;
-    if (refresh) {
-      _page = 1;
-      _hasMore = true;
-    }
+    if (_issues.isLoading) return;
+    final loadingState = _issues.startLoading(refresh: refresh);
     setState(() {
-      _loading = true;
-      _error = '';
+      _issues = loadingState;
     });
 
     final dynamic result;
@@ -1997,22 +1541,23 @@ class _IssuesTabState extends State<_IssuesTab>
         widget.owner,
         widget.repo,
         state: _state == 'all' ? 'all' : _state,
-        page: _page,
-        perPage: 30,
+        page: loadingState.page,
+        perPage: _pageSize,
       );
     } else {
       result = await _api.getRepositoryIssues(
         widget.owner,
         widget.repo,
         state: _state == 'all' ? 'all' : _state,
-        page: _page,
-        perPage: 30,
+        page: loadingState.page,
+        perPage: _pageSize,
       );
     }
 
     if (!mounted) return;
 
     if (result.isSuccess) {
+      final rawItemCount = (result.data as List?)?.length ?? 0;
       List<Map<String, dynamic>> items =
           List<Map<String, dynamic>>.from(result.data ?? []);
       // Client-side filter: when showing Issues only, exclude PRs
@@ -2020,22 +1565,16 @@ class _IssuesTabState extends State<_IssuesTab>
         items = items.where((e) => e['pull_request'] == null).toList();
       }
       setState(() {
-        _loading = false;
-        if (refresh) {
-          _issues = items;
-        } else {
-          _issues = [..._issues, ...items];
-        }
-        // For issues-only mode the filtered count may be < perPage even if more
-        // pages exist, so only stop paging when the raw page was short.
-        _hasMore = (result.data as List?)?.length != null &&
-            (result.data as List).length >= 30;
-        _page++;
+        _issues = _issues.complete(
+          items: items,
+          pageSize: _pageSize,
+          rawItemCount: rawItemCount,
+        );
       });
     } else {
       setState(() {
-        _loading = false;
-        _error = result.message ?? AppLocalizations.of(context).loadFailed;
+        _issues = _issues
+            .fail(result.message ?? AppLocalizations.of(context).loadFailed);
       });
     }
   }
@@ -2044,8 +1583,7 @@ class _IssuesTabState extends State<_IssuesTab>
     if (s == _state) return;
     setState(() {
       _state = s;
-      _issues = [];
-      _page = 1;
+      _issues = _issues.reset();
     });
     _load();
   }
@@ -2054,8 +1592,7 @@ class _IssuesTabState extends State<_IssuesTab>
     if (t == _typeFilter) return;
     setState(() {
       _typeFilter = t;
-      _issues = [];
-      _page = 1;
+      _issues = _issues.reset();
     });
     _load();
   }
@@ -2069,6 +1606,7 @@ class _IssuesTabState extends State<_IssuesTab>
     final totalCount = (_issueCount != null || _prCount != null)
         ? (_issueCount ?? 0) + (_prCount ?? 0)
         : null;
+    final issues = _issues.items;
 
     return Column(
       children: [
@@ -2134,14 +1672,14 @@ class _IssuesTabState extends State<_IssuesTab>
         ),
         // ── List ───────────────────────────────────────────────────────────
         Expanded(
-          child: _loading && _issues.isEmpty
+          child: _issues.isLoading && issues.isEmpty
               ? const Center(child: CircularProgressIndicator())
-              : _error.isNotEmpty && _issues.isEmpty
+              : _issues.error.isNotEmpty && issues.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_error, textAlign: TextAlign.center),
+                          Text(_issues.error, textAlign: TextAlign.center),
                           const SizedBox(height: 16),
                           OutlinedButton.icon(
                             onPressed: () => _load(refresh: true),
@@ -2151,7 +1689,7 @@ class _IssuesTabState extends State<_IssuesTab>
                         ],
                       ),
                     )
-                  : _issues.isEmpty
+                  : issues.isEmpty
                       ? Center(child: Text(l10n.noIssues))
                       : RefreshIndicator(
                           onRefresh: () => _load(refresh: true),
@@ -2160,11 +1698,12 @@ class _IssuesTabState extends State<_IssuesTab>
                               'repository-issues-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
                             ),
                             padding: EdgeInsets.zero,
-                            itemCount: _issues.length + (_hasMore ? 1 : 0),
+                            itemCount:
+                                issues.length + (_issues.hasMore ? 1 : 0),
                             separatorBuilder: (_, __) =>
                                 const Divider(height: 1, indent: 16),
                             itemBuilder: (context, i) {
-                              if (i >= _issues.length) {
+                              if (i >= issues.length) {
                                 _load();
                                 return const Padding(
                                   padding: EdgeInsets.all(16),
@@ -2173,12 +1712,12 @@ class _IssuesTabState extends State<_IssuesTab>
                                 );
                               }
                               return _IssueTile(
-                                  issue: _issues[i],
+                                  issue: issues[i],
                                   onTap: () {
-                                    final number = _issues[i]['number'] as int?;
+                                    final number = issues[i]['number'] as int?;
                                     if (number != null) {
                                       final isPr =
-                                          _issues[i]['pull_request'] != null ||
+                                          issues[i]['pull_request'] != null ||
                                               _typeFilter == 'pulls';
                                       if (isPr) {
                                         context.push(
@@ -2448,6 +1987,7 @@ class _CommitsTab extends StatefulWidget {
     required this.branches,
     required this.tags,
     required this.scrollResetVersion,
+    required this.onBranchCreated,
   });
   final String owner;
   final String repo;
@@ -2455,6 +1995,7 @@ class _CommitsTab extends StatefulWidget {
   final List<Map<String, dynamic>> branches;
   final List<Map<String, dynamic>> tags;
   final int scrollResetVersion;
+  final void Function(String name, String sha) onBranchCreated;
 
   @override
   State<_CommitsTab> createState() => _CommitsTabState();
@@ -2462,13 +2003,14 @@ class _CommitsTab extends StatefulWidget {
 
 class _CommitsTabState extends State<_CommitsTab>
     with AutomaticKeepAliveClientMixin {
+  static const _pageSize = 30;
+
   final _api = GitHubApiClient.instance;
-  List<Map<String, dynamic>> _commits = [];
+  late final RepositoryBranchCreator _branchCreator =
+      RepositoryBranchCreator(createBranch: _api.createBranch);
+  RepositoryPagedList<Map<String, dynamic>> _commits =
+      const RepositoryPagedList.initial();
   String _selectedBranch = '';
-  bool _loading = false;
-  bool _hasMore = true;
-  int _page = 1;
-  String _error = '';
 
   @override
   bool get wantKeepAlive => true;
@@ -2486,22 +2028,18 @@ class _CommitsTabState extends State<_CommitsTab>
   }
 
   Future<void> _load({bool refresh = false}) async {
-    if (_loading) return;
-    if (refresh) {
-      _page = 1;
-      _hasMore = true;
-    }
+    if (_commits.isLoading) return;
+    final loadingState = _commits.startLoading(refresh: refresh);
     setState(() {
-      _loading = true;
-      _error = '';
+      _commits = loadingState;
     });
 
     final result = await _api.getRepositoryCommits(
       widget.owner,
       widget.repo,
       sha: _selectedBranch,
-      page: _page,
-      perPage: 30,
+      page: loadingState.page,
+      perPage: _pageSize,
     );
 
     if (!mounted) return;
@@ -2509,19 +2047,16 @@ class _CommitsTabState extends State<_CommitsTab>
     if (result.isSuccess) {
       final items = result.data ?? [];
       setState(() {
-        _loading = false;
-        if (refresh) {
-          _commits = items;
-        } else {
-          _commits = [..._commits, ...items];
-        }
-        _hasMore = items.length >= 30;
-        _page++;
+        _commits = _commits.complete(
+          items: items,
+          pageSize: _pageSize,
+        );
       });
     } else {
       setState(() {
-        _loading = false;
-        _error = result.message ?? AppLocalizations.of(context).loadFailed;
+        _commits = _commits.fail(
+          result.message ?? AppLocalizations.of(context).loadFailed,
+        );
       });
     }
   }
@@ -2530,31 +2065,17 @@ class _CommitsTabState extends State<_CommitsTab>
     final l10n = AppLocalizations.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
-    // Find source branch's commit SHA
-    final sourceBranchInfo =
-        widget.branches.cast<Map<String, dynamic>?>().firstWhere(
-              (b) => b != null && b['name'] == sourceRef,
-              orElse: () => null,
-            );
-    final baseSha = sourceBranchInfo?['commit']?['sha'] as String?;
-
-    if (baseSha == null) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text(l10n.createBranchFailed)),
-      );
-      return;
-    }
-
     setState(() {
-      _loading = true;
-      _error = '';
+      _commits = _commits.startLoading();
     });
 
-    final result = await _api.createBranch(
+    final result = await _branchCreator.create(
       owner: widget.owner,
       repo: widget.repo,
       newBranchName: newName,
-      baseSha: baseSha,
+      sourceRef: sourceRef,
+      branches: widget.branches,
+      fallbackErrorMessage: l10n.createBranchFailed,
     );
 
     if (!mounted) return;
@@ -2563,21 +2084,18 @@ class _CommitsTabState extends State<_CommitsTab>
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text(l10n.createBranchSuccess)),
       );
-      // We'd need to tell parent to reload branches if we want it updated everywhere,
-      // but for now let's just update locally and switch.
+      widget.onBranchCreated(newName, result.baseSha!);
       setState(() {
         _selectedBranch = newName;
-        _commits = [];
-        _page = 1;
+        _commits = _commits.reset();
       });
       _load();
     } else {
       setState(() {
-        _loading = false;
-        _error = result.message ?? l10n.createBranchFailed;
+        _commits = _commits.fail(result.message);
       });
       scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text(result.message ?? l10n.createBranchFailed)),
+        SnackBar(content: Text(result.message)),
       );
     }
   }
@@ -2600,8 +2118,7 @@ class _CommitsTabState extends State<_CommitsTab>
       } else if (name != _selectedBranch) {
         setState(() {
           _selectedBranch = name;
-          _commits = [];
-          _page = 1;
+          _commits = _commits.reset();
         });
         _load();
       }
@@ -2613,6 +2130,7 @@ class _CommitsTabState extends State<_CommitsTab>
     super.build(context);
     final l10n = AppLocalizations.of(context);
     final cs = Theme.of(context).colorScheme;
+    final commits = _commits.items;
 
     return Column(
       children: [
@@ -2647,14 +2165,14 @@ class _CommitsTabState extends State<_CommitsTab>
         const Divider(height: 1),
         // ── Commit list ───────────────────────────────────────────────────
         Expanded(
-          child: _loading && _commits.isEmpty
+          child: _commits.isLoading && commits.isEmpty
               ? const Center(child: CircularProgressIndicator())
-              : _error.isNotEmpty && _commits.isEmpty
+              : _commits.error.isNotEmpty && commits.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_error, textAlign: TextAlign.center),
+                          Text(_commits.error, textAlign: TextAlign.center),
                           const SizedBox(height: 16),
                           OutlinedButton.icon(
                             onPressed: () => _load(refresh: true),
@@ -2664,7 +2182,7 @@ class _CommitsTabState extends State<_CommitsTab>
                         ],
                       ),
                     )
-                  : _commits.isEmpty
+                  : commits.isEmpty
                       ? Center(child: Text(l10n.noCommits))
                       : RefreshIndicator(
                           onRefresh: () => _load(refresh: true),
@@ -2673,11 +2191,12 @@ class _CommitsTabState extends State<_CommitsTab>
                               'repository-commits-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
                             ),
                             padding: EdgeInsets.zero,
-                            itemCount: _commits.length + (_hasMore ? 1 : 0),
+                            itemCount:
+                                commits.length + (_commits.hasMore ? 1 : 0),
                             separatorBuilder: (_, __) =>
                                 const Divider(height: 1, indent: 16),
                             itemBuilder: (context, i) {
-                              if (i >= _commits.length) {
+                              if (i >= commits.length) {
                                 _load();
                                 return const Padding(
                                   padding: EdgeInsets.all(16),
@@ -2685,7 +2204,7 @@ class _CommitsTabState extends State<_CommitsTab>
                                       child: CircularProgressIndicator()),
                                 );
                               }
-                              final c = _commits[i];
+                              final c = commits[i];
                               return _CommitTile(
                                 commit: c,
                                 onTap: () {
@@ -2812,10 +2331,11 @@ class _ReleasesTab extends StatefulWidget {
 
 class _ReleasesTabState extends State<_ReleasesTab>
     with AutomaticKeepAliveClientMixin {
+  static const _pageSize = 20;
+
   final _api = GitHubApiClient.instance;
-  List<Map<String, dynamic>> _releases = [];
-  bool _loading = true;
-  String _error = '';
+  RepositoryPagedList<Map<String, dynamic>> _releases =
+      const RepositoryPagedList.initial();
 
   @override
   bool get wantKeepAlive => true;
@@ -2831,29 +2351,34 @@ class _ReleasesTabState extends State<_ReleasesTab>
     super.didUpdateWidget(oldWidget);
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool refresh = false}) async {
+    if (_releases.isLoading) return;
+    final loadingState = _releases.startLoading(refresh: refresh);
     setState(() {
-      _loading = true;
-      _error = '';
+      _releases = loadingState;
     });
 
     final result = await _api.getRepositoryReleases(
       widget.owner,
       widget.repo,
-      perPage: 20,
+      page: loadingState.page,
+      perPage: _pageSize,
     );
 
     if (!mounted) return;
 
     if (result.isSuccess) {
       setState(() {
-        _releases = result.data ?? [];
-        _loading = false;
+        _releases = _releases.complete(
+          items: result.data ?? [],
+          pageSize: _pageSize,
+        );
       });
     } else {
       setState(() {
-        _error = result.message ?? AppLocalizations.of(context).loadFailed;
-        _loading = false;
+        _releases = _releases.fail(
+          result.message ?? AppLocalizations.of(context).loadFailed,
+        );
       });
     }
   }
@@ -2863,19 +2388,20 @@ class _ReleasesTabState extends State<_ReleasesTab>
     super.build(context);
     final l10n = AppLocalizations.of(context);
     final cs = Theme.of(context).colorScheme;
+    final releases = _releases.items;
 
-    if (_loading && _releases.isEmpty) {
+    if (_releases.isLoading && releases.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error.isNotEmpty) {
+    if (_releases.error.isNotEmpty && releases.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error, textAlign: TextAlign.center),
+            Text(_releases.error, textAlign: TextAlign.center),
             const SizedBox(height: 16),
             OutlinedButton.icon(
-              onPressed: _load,
+              onPressed: () => _load(refresh: true),
               icon: const Icon(Icons.refresh, size: 16),
               label: const Text('重试'),
             ),
@@ -2883,7 +2409,7 @@ class _ReleasesTabState extends State<_ReleasesTab>
         ),
       );
     }
-    if (_releases.isEmpty) {
+    if (releases.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2907,7 +2433,7 @@ class _ReleasesTabState extends State<_ReleasesTab>
           child: Row(
             children: [
               Text(
-                '${_releases.length} 个 Release',
+                '${releases.length} 个 Release',
                 style: TextStyle(
                   fontSize: 14,
                   color: cs.onSurfaceVariant,
@@ -2916,8 +2442,9 @@ class _ReleasesTabState extends State<_ReleasesTab>
               ),
               const Spacer(),
               TextButton.icon(
-                onPressed: _loading ? null : _load,
-                icon: _loading
+                onPressed:
+                    _releases.isLoading ? null : () => _load(refresh: true),
+                icon: _releases.isLoading
                     ? const SizedBox(
                         width: 14,
                         height: 14,
@@ -2935,15 +2462,24 @@ class _ReleasesTabState extends State<_ReleasesTab>
         ),
         Expanded(
           child: RefreshIndicator(
-            onRefresh: _load,
+            onRefresh: () => _load(refresh: true),
             child: ListView.separated(
               key: PageStorageKey<String>(
                 'repository-releases-${widget.owner}/${widget.repo}-${widget.scrollResetVersion}',
               ),
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-              itemCount: _releases.length,
+              itemCount: releases.length + (_releases.hasMore ? 1 : 0),
               separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, i) => _ReleaseTile(release: _releases[i]),
+              itemBuilder: (context, i) {
+                if (i >= releases.length) {
+                  _load();
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return _ReleaseTile(release: releases[i]);
+              },
             ),
           ),
         ),

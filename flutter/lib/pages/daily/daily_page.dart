@@ -5,6 +5,7 @@ import '../../components/daily/daily_report_share_card.dart';
 import '../../components/daily/daily_report_view.dart';
 import '../../models/trending_item.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// "/daily" page — Trending repos + Daily Report.
 /// Mirrors HarmonyOS DailyView.
@@ -118,9 +119,7 @@ class _DailyPageState extends State<DailyPage> {
       setState(() {
         _reportNotFound = true;
         final isToday = _selectedDate == _todayStr();
-        _reportError = isToday
-            ? '今日报告尚未生成\n通常于每天下午发布，请稍后再来'
-            : '该日期暂无报告数据';
+        _reportError = isToday ? '今日报告尚未生成\n通常于每天下午发布，请稍后再来' : '该日期暂无报告数据';
         _reportLoading = false;
       });
     } else {
@@ -487,6 +486,8 @@ class _TrendingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
+    final metadataStyle = repoMetadataTextStyle(context);
 
     return InkWell(
       onTap: () => context.push('/repository/${item.owner}/${item.name}'),
@@ -563,14 +564,12 @@ class _TrendingCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        Text(item.language,
-                            style: Theme.of(context).textTheme.bodySmall),
+                        Text(item.language, style: metadataStyle),
                         const SizedBox(width: 12),
                       ],
-                      const Icon(Icons.star_border, size: 13),
+                      Icon(Icons.star_border, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(item.stars),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(item.stars), style: metadataStyle),
                       if (item.starsDelta > 0) ...[
                         const SizedBox(width: 4),
                         Text(
@@ -583,10 +582,9 @@ class _TrendingCard extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(width: 10),
-                      const Icon(Icons.fork_right, size: 13),
+                      Icon(Icons.fork_right, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(item.forks),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(item.forks), style: metadataStyle),
                     ],
                   ),
                 ],

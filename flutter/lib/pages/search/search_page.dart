@@ -2,10 +2,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/feedback/cache_warning_banner.dart';
 import '../../components/repository/repo_context_menu.dart';
 import '../../models/repository.dart';
 import '../../models/user.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// Search repos and users — mirrors HarmonyOS SearchView.
 class SearchPage extends StatefulWidget {
@@ -43,7 +45,8 @@ class _SearchPageState extends State<SearchPage>
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _focusNode.requestFocus());
   }
 
   @override
@@ -98,6 +101,7 @@ class _SearchPageState extends State<SearchPage>
           .toList();
       setState(() {
         _reposLoading = false;
+        _reposError = result.cacheWarning ?? '';
         if (more) {
           _repos = [..._repos, ...items];
         } else {
@@ -137,6 +141,7 @@ class _SearchPageState extends State<SearchPage>
           .toList();
       setState(() {
         _usersLoading = false;
+        _usersError = result.cacheWarning ?? '';
         if (more) {
           _users = [..._users, ...items];
         } else {
@@ -173,8 +178,12 @@ class _SearchPageState extends State<SearchPage>
             ? TabBar(
                 controller: _tab,
                 tabs: [
-                  Tab(text: '仓库 ${_repos.isNotEmpty ? "(${_repos.length}+)" : ""}'),
-                  Tab(text: '用户 ${_users.isNotEmpty ? "(${_users.length}+)" : ""}'),
+                  Tab(
+                      text:
+                          '仓库 ${_repos.isNotEmpty ? "(${_repos.length}+)" : ""}'),
+                  Tab(
+                      text:
+                          '用户 ${_users.isNotEmpty ? "(${_users.length}+)" : ""}'),
                 ],
               )
             : null,
@@ -265,8 +274,16 @@ class _SearchHint extends StatelessWidget {
   final void Function(String) onSuggestionTap;
 
   static const _suggestions = [
-    'flutter', 'react', 'vue', 'typescript', 'python',
-    'rust', 'golang', 'kubernetes', 'llm', 'next.js',
+    'flutter',
+    'react',
+    'vue',
+    'typescript',
+    'python',
+    'rust',
+    'golang',
+    'kubernetes',
+    'llm',
+    'next.js',
   ];
 
   @override
@@ -328,24 +345,29 @@ class _ReposResultList extends StatelessWidget {
       return const _EmptyView(message: '没有找到相关仓库');
     }
 
+    final hasWarning = error.isNotEmpty;
     return ListView.separated(
-      itemCount: repos.length + (hasMore ? 1 : 0),
+      itemCount: repos.length + (hasMore ? 1 : 0) + (hasWarning ? 1 : 0),
       separatorBuilder: (_, __) =>
           const Divider(height: 1, indent: 16, endIndent: 16),
       itemBuilder: (context, i) {
-        if (i >= repos.length) {
+        if (hasWarning && i == 0) {
+          return CacheWarningBanner(message: error);
+        }
+        final repoIndex = hasWarning ? i - 1 : i;
+        if (repoIndex >= repos.length) {
           onLoadMore();
           return const Padding(
             padding: EdgeInsets.all(16),
             child: Center(child: CircularProgressIndicator()),
           );
         }
-        final repo = repos[i];
+        final repo = repos[repoIndex];
         final owner = repo.owner?.login ?? '';
         return _RepoTile(
           repo: repo,
-          onTap: () => context.push('/repository/$owner/${repo.name}',
-              extra: repo),
+          onTap: () =>
+              context.push('/repository/$owner/${repo.name}', extra: repo),
         );
       },
     );
@@ -360,7 +382,9 @@ class _RepoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
     final avatar = repo.owner?.avatarUrl ?? '';
+    final metadataStyle = repoMetadataTextStyle(context);
 
     return InkWell(
       onTap: onTap,
@@ -425,19 +449,16 @@ class _RepoTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        Text(repo.language,
-                            style: Theme.of(context).textTheme.bodySmall),
+                        Text(repo.language, style: metadataStyle),
                         const SizedBox(width: 10),
                       ],
-                      const Icon(Icons.star_border, size: 13),
+                      Icon(Icons.star_border, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(repo.stargazersCount),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(repo.stargazersCount), style: metadataStyle),
                       const SizedBox(width: 10),
-                      const Icon(Icons.fork_right, size: 13),
+                      Icon(Icons.fork_right, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(repo.forksCount),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(repo.forksCount), style: metadataStyle),
                     ],
                   ),
                 ],
@@ -483,12 +504,16 @@ class _UsersResultList extends StatelessWidget {
       return const _EmptyView(message: '没有找到相关用户');
     }
 
+    final hasWarning = error.isNotEmpty;
     return ListView.separated(
-      itemCount: users.length + (hasMore ? 1 : 0),
-      separatorBuilder: (_, __) =>
-          const Divider(height: 1, indent: 72),
+      itemCount: users.length + (hasMore ? 1 : 0) + (hasWarning ? 1 : 0),
+      separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
       itemBuilder: (context, i) {
-        if (i >= users.length) {
+        if (hasWarning && i == 0) {
+          return CacheWarningBanner(message: error);
+        }
+        final userIndex = hasWarning ? i - 1 : i;
+        if (userIndex >= users.length) {
           onLoadMore();
           return const Padding(
             padding: EdgeInsets.all(16),
@@ -496,8 +521,8 @@ class _UsersResultList extends StatelessWidget {
           );
         }
         return _UserTile(
-          user: users[i],
-          onTap: () => context.push('/user/${users[i].login}'),
+          user: users[userIndex],
+          onTap: () => context.push('/user/${users[userIndex].login}'),
         );
       },
     );
@@ -524,9 +549,7 @@ class _UserTile extends StatelessWidget {
                 width: 40,
                 height: 40,
                 placeholder: (_, __) => Container(
-                    width: 40,
-                    height: 40,
-                    color: cs.surfaceContainerHighest),
+                    width: 40, height: 40, color: cs.surfaceContainerHighest),
                 errorWidget: (_, __, ___) =>
                     const Icon(Icons.account_circle, size: 40),
               ),
@@ -543,8 +566,7 @@ class _UserTile extends StatelessWidget {
                   ),
                   Text(
                     user.login,
-                    style: TextStyle(
-                        fontSize: 12, color: cs.onSurfaceVariant),
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                   ),
                   if (user.bio.isNotEmpty)
                     Text(

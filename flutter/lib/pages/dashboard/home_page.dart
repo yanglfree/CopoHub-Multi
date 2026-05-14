@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/feedback/cache_warning_banner.dart';
 import '../../components/repository/repo_context_menu.dart';
 import '../../components/repository/repository_activity_sparkline.dart';
 import '../../components/skeleton/repo_list_skeleton.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/repository.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// The "首页" (Home) tab — user repos + starred repos.
 class HomePage extends StatefulWidget {
@@ -38,12 +41,13 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: cs.surfaceContainerLowest,
       appBar: AppBar(
-        title: const Text(
-          '首页',
-          style: TextStyle(fontWeight: FontWeight.w700),
+        title: Text(
+          l10n.home,
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
           Padding(
@@ -66,9 +70,9 @@ class _HomePageState extends State<HomePage>
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: '我的仓库'),
-            Tab(text: 'Star 仓库'),
+          tabs: [
+            Tab(text: l10n.myRepositories),
+            Tab(text: l10n.starredRepositories),
           ],
         ),
       ),
@@ -135,6 +139,7 @@ class _UserReposTabState extends State<_UserReposTab>
       final items = result.data ?? [];
       setState(() {
         _loading = false;
+        _error = result.cacheWarning ?? '';
         if (refresh) {
           _allRepos = items;
         } else {
@@ -146,7 +151,7 @@ class _UserReposTabState extends State<_UserReposTab>
     } else {
       setState(() {
         _loading = false;
-        _error = result.message ?? '加载失败';
+        _error = result.message ?? AppLocalizations.of(context).loadFailed;
       });
     }
   }
@@ -175,6 +180,7 @@ class _UserReposTabState extends State<_UserReposTab>
   }
 
   void _showFilterSheet() {
+    final l10n = AppLocalizations.of(context);
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -192,8 +198,8 @@ class _UserReposTabState extends State<_UserReposTab>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('筛选仓库',
-                          style: TextStyle(
+                      Text(l10n.filterRepositories,
+                          style: const TextStyle(
                               fontSize: 17, fontWeight: FontWeight.w600)),
                       IconButton(
                         icon: const Icon(Icons.close),
@@ -204,7 +210,7 @@ class _UserReposTabState extends State<_UserReposTab>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text('可见性',
+                  Text(l10n.visibility,
                       style: TextStyle(
                           fontSize: 13,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -216,9 +222,18 @@ class _UserReposTabState extends State<_UserReposTab>
                     _VisibilityFilter.private,
                   ].map((v) {
                     final (label, desc) = switch (v) {
-                      _VisibilityFilter.all => ('全部', '公开和私有仓库'),
-                      _VisibilityFilter.public => ('公开', '所有人可见的仓库'),
-                      _VisibilityFilter.private => ('私有', '仅你和协作者可见的仓库'),
+                      _VisibilityFilter.all => (
+                          l10n.visibilityAll,
+                          l10n.visibilityAllDescription
+                        ),
+                      _VisibilityFilter.public => (
+                          l10n.visibilityPublic,
+                          l10n.visibilityPublicDescription
+                        ),
+                      _VisibilityFilter.private => (
+                          l10n.visibilityPrivate,
+                          l10n.visibilityPrivateDescription
+                        ),
                     };
                     final selected = _visibility == v;
                     return Column(
@@ -279,6 +294,7 @@ class _UserReposTabState extends State<_UserReposTab>
   Widget build(BuildContext context) {
     super.build(context);
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     if (_loading && _allRepos.isEmpty) {
       return const RepoListSkeleton();
@@ -303,7 +319,7 @@ class _UserReposTabState extends State<_UserReposTab>
               child: Row(
                 children: [
                   Text(
-                    '全部仓库',
+                    l10n.allRepositories,
                     style: TextStyle(
                         fontSize: 14,
                         color: cs.onSurfaceVariant,
@@ -325,7 +341,7 @@ class _UserReposTabState extends State<_UserReposTab>
                           Icon(Icons.filter_list,
                               size: 15, color: cs.onSurfaceVariant),
                           const SizedBox(width: 4),
-                          Text('筛选',
+                          Text(l10n.filter,
                               style: TextStyle(
                                   fontSize: 13, color: cs.onSurfaceVariant)),
                         ],
@@ -336,6 +352,8 @@ class _UserReposTabState extends State<_UserReposTab>
               ),
             ),
           ),
+          if (_error.isNotEmpty)
+            SliverToBoxAdapter(child: CacheWarningBanner(message: _error)),
           // ── Language chips ────────────────────────────────────────────────
           if (langs.length > 1)
             SliverToBoxAdapter(
@@ -453,6 +471,7 @@ class _StarredReposTabState extends State<_StarredReposTab>
       final items = result.data ?? [];
       setState(() {
         _loading = false;
+        _error = result.cacheWarning ?? '';
         if (refresh) {
           _repos = items;
         } else {
@@ -464,7 +483,7 @@ class _StarredReposTabState extends State<_StarredReposTab>
     } else {
       setState(() {
         _loading = false;
-        _error = result.message ?? '加载失败';
+        _error = result.message ?? AppLocalizations.of(context).loadFailed;
       });
     }
   }
@@ -485,6 +504,8 @@ class _StarredReposTabState extends State<_StarredReposTab>
         key: const PageStorageKey<String>('home-starred-repos'),
         slivers: [
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          if (_error.isNotEmpty)
+            SliverToBoxAdapter(child: CacheWarningBanner(message: _error)),
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, i) {
@@ -518,9 +539,10 @@ class _MyRepoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     final owner = repo.owner?.login ?? '';
-    final updatedText =
-        _timeAgo(repo.pushedAt.isNotEmpty ? repo.pushedAt : repo.updatedAt);
+    final updatedText = _updatedTimeAgo(
+        l10n, repo.pushedAt.isNotEmpty ? repo.pushedAt : repo.updatedAt);
     return InkWell(
       onTap: () => context.push(
           '/repository/${repo.owner?.login ?? ''}/${repo.name}',
@@ -528,102 +550,70 @@ class _MyRepoTile extends StatelessWidget {
       onLongPress: () => showRepoContextMenu(context, repo),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          repo.name,
-                          style: TextStyle(
-                            color: cs.primary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              repo.name,
+                              style: TextStyle(
+                                color: cs.primary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                          if (repo.private)
+                            Icon(Icons.lock_outline,
+                                size: 16, color: cs.onSurfaceVariant),
+                        ],
                       ),
-                      if (repo.private)
-                        Icon(Icons.lock_outline,
-                            size: 16, color: cs.onSurfaceVariant),
-                    ],
-                  ),
-                  if (repo.description.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      repo.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style:
-                          TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      if (repo.language.isNotEmpty) ...[
-                        Container(
-                          width: 11,
-                          height: 11,
-                          decoration: BoxDecoration(
-                            color: Color(int.tryParse(
-                                    Constants.getLanguageColor(repo.language)
-                                        .replaceFirst('#', '0xFF')) ??
-                                0xFF8b949e),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            repo.language,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 12, color: cs.onSurfaceVariant),
-                          ),
+                      if (repo.description.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          repo.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurfaceVariant),
                         ),
                       ],
                     ],
                   ),
-                ],
-              ),
-            ),
-            if (owner.isNotEmpty || updatedText.isNotEmpty) ...[
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 84,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (owner.isNotEmpty)
-                      RepositoryActivitySparkline(
+                ),
+                if (owner.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 76,
+                    child: Opacity(
+                      opacity: 0.68,
+                      child: RepositoryActivitySparkline(
                         owner: owner,
                         repo: repo.name,
-                        width: 84,
+                        width: 76,
+                        height: 30,
                       ),
-                    if (updatedText.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        updatedText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style:
-                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            _RepoMetadata(
+              repo: repo,
+              updatedText: updatedText,
+            ),
           ],
         ),
       ),
@@ -638,6 +628,8 @@ class _StarredRepoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final metadataColor = repoMetadataColor(cs);
     return InkWell(
       onTap: () => context.push(
           '/repository/${repo.owner?.login ?? ''}/${repo.name}',
@@ -691,32 +683,31 @@ class _StarredRepoTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(repo.language,
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      style: TextStyle(fontSize: 12, color: metadataColor)),
                   const SizedBox(width: 12),
                 ],
                 if (repo.stargazersCount > 0) ...[
-                  Icon(Icons.star_border, size: 13, color: cs.onSurfaceVariant),
+                  Icon(Icons.star_border, size: 13, color: metadataColor),
                   const SizedBox(width: 2),
                   Text(_fmt(repo.stargazersCount),
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      style: TextStyle(fontSize: 12, color: metadataColor)),
                   const SizedBox(width: 10),
                 ],
                 if (repo.forksCount > 0) ...[
-                  Icon(Icons.fork_right, size: 13, color: cs.onSurfaceVariant),
+                  Icon(Icons.fork_right, size: 13, color: metadataColor),
                   const SizedBox(width: 2),
                   Text(_fmt(repo.forksCount),
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      style: TextStyle(fontSize: 12, color: metadataColor)),
                   const SizedBox(width: 10),
                 ],
                 const Spacer(),
                 Text(
-                  _timeAgo(repo.pushedAt.isNotEmpty
-                      ? repo.pushedAt
-                      : repo.updatedAt),
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  _updatedTimeAgo(
+                      l10n,
+                      repo.pushedAt.isNotEmpty
+                          ? repo.pushedAt
+                          : repo.updatedAt),
+                  style: TextStyle(fontSize: 12, color: metadataColor),
                 ),
               ],
             ),
@@ -730,19 +721,190 @@ class _StarredRepoTile extends StatelessWidget {
       n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 }
 
+class _RepoMetadata extends StatelessWidget {
+  const _RepoMetadata({
+    required this.repo,
+    required this.updatedText,
+  });
+
+  final Repository repo;
+  final String updatedText;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final licenseText = _licenseText(repo.license);
+    final metadataColor = repoMetadataColor(cs);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxItemWidth =
+            constraints.maxWidth.isFinite ? constraints.maxWidth : 320.0;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (repo.language.isNotEmpty)
+              _RepoMetadataItem(
+                tooltip: l10n.language,
+                icon: _LanguageDot(language: repo.language),
+                text: repo.language,
+                color: metadataColor,
+                maxWidth: maxItemWidth,
+              ),
+            _RepoMetadataItem(
+              tooltip: l10n.stars,
+              icon: Icon(Icons.star_border, size: 13, color: metadataColor),
+              text: _fmt(repo.stargazersCount),
+              color: metadataColor,
+              maxWidth: maxItemWidth,
+            ),
+            if (licenseText.isNotEmpty)
+              _RepoMetadataItem(
+                tooltip: l10n.license,
+                icon: Icon(Icons.balance, size: 13, color: metadataColor),
+                text: licenseText,
+                color: metadataColor,
+                maxWidth: maxItemWidth,
+              ),
+            if (updatedText.isNotEmpty)
+              _RepoMetadataItem(
+                tooltip: l10n.updated,
+                text: updatedText,
+                color: metadataColor,
+                maxWidth: maxItemWidth,
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _fmt(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+
+  static String _licenseText(RepoLicense? license) {
+    if (license == null) return '';
+    final raw = license.name.isNotEmpty ? license.name : license.spdxId;
+    final normalized = raw.toLowerCase();
+
+    if (normalized.contains('apache')) return 'Apache 2.0';
+    if (normalized == 'mit' || normalized.contains('mit license')) {
+      return 'MIT';
+    }
+    if (normalized.contains('gnu affero') || normalized.contains('agpl')) {
+      return 'AGPL v3';
+    }
+    if (normalized.contains('gnu lesser') || normalized.contains('lgpl')) {
+      return normalized.contains('2.1') ? 'LGPL v2.1' : 'LGPL v3';
+    }
+    if (normalized.contains('gnu general public') ||
+        normalized.contains('gpl')) {
+      if (normalized.contains('2.0') || normalized.contains('v2')) {
+        return 'GPL v2';
+      }
+      return 'GPL v3';
+    }
+    if (normalized.contains('mozilla') || normalized.contains('mpl')) {
+      return 'MPL 2.0';
+    }
+    if (normalized.contains('bsd 3') || normalized.contains('3-clause')) {
+      return 'BSD 3-Clause';
+    }
+    if (normalized.contains('bsd 2') || normalized.contains('2-clause')) {
+      return 'BSD 2-Clause';
+    }
+    if (normalized.contains('unlicense')) return 'Unlicense';
+
+    return raw;
+  }
+}
+
+class _RepoMetadataItem extends StatelessWidget {
+  const _RepoMetadataItem({
+    required this.tooltip,
+    required this.text,
+    required this.color,
+    required this.maxWidth,
+    this.icon,
+  });
+
+  final String tooltip;
+  final Widget? icon;
+  final String text;
+  final Color color;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = TextStyle(fontSize: 12, color: color);
+    final textMaxWidth = maxWidth - (icon == null ? 0 : 17);
+
+    return Tooltip(
+      message: tooltip,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            icon!,
+            const SizedBox(width: 4),
+          ],
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: textMaxWidth),
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textStyle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageDot extends StatelessWidget {
+  const _LanguageDot({required this.language});
+
+  final String language;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 11,
+      height: 11,
+      decoration: BoxDecoration(
+        color: Color(int.tryParse(Constants.getLanguageColor(language)
+                .replaceFirst('#', '0xFF')) ??
+            0xFF8b949e),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-String _timeAgo(String isoDate) {
+String _updatedTimeAgo(AppLocalizations l10n, String isoDate) {
   if (isoDate.isEmpty) return '';
   final dt = DateTime.tryParse(isoDate);
   if (dt == null) return '';
   final diff = DateTime.now().difference(dt.toLocal());
-  if (diff.inMinutes < 1) return '刚刚';
-  if (diff.inHours < 1) return '${diff.inMinutes} 分钟前';
-  if (diff.inDays < 1) return '${diff.inHours} 小时前';
-  if (diff.inDays < 30) return '${diff.inDays} 天前';
-  if (diff.inDays < 365) return '${(diff.inDays / 30).floor()} 个月前';
-  return '${(diff.inDays / 365).floor()} 年前';
+  final relativeTime = diff.inMinutes < 1
+      ? l10n.justNow
+      : diff.inHours < 1
+          ? l10n.minutesAgo(diff.inMinutes)
+          : diff.inDays < 1
+              ? l10n.hoursAgo(diff.inHours)
+              : diff.inDays < 30
+                  ? l10n.daysAgo(diff.inDays)
+                  : diff.inDays < 365
+                      ? l10n.monthsAgo((diff.inDays / 30).floor())
+                      : l10n.yearsAgo((diff.inDays / 365).floor());
+  return l10n.updatedAgo(relativeTime);
 }
 
 class _LoadMoreIndicator extends StatelessWidget {
@@ -771,7 +933,9 @@ class _ErrorView extends StatelessWidget {
               const SizedBox(height: 16),
               Text(message, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+              OutlinedButton(
+                  onPressed: onRetry,
+                  child: Text(AppLocalizations.of(context).retry)),
             ],
           ),
         ),

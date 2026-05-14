@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../components/markdown/markdown_scroll_fix.dart';
 import '../../models/copohub_curated_item.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// Detail page for a CopoHub curated/featured repository.
 /// Receives a [CopoHubCuratedItem] via GoRouter [extra].
@@ -27,6 +28,7 @@ class CuratedDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final metadataColor = repoMetadataColor(cs);
 
     return Scaffold(
       appBar: AppBar(
@@ -60,8 +62,7 @@ class CuratedDetailPage extends StatelessWidget {
                           radius: 18,
                           backgroundImage: NetworkImage(
                               'https://avatars.githubusercontent.com/${item.owner}'),
-                          backgroundColor:
-                              cs.surfaceContainerHighest,
+                          backgroundColor: cs.surfaceContainerHighest,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -85,8 +86,8 @@ class CuratedDetailPage extends StatelessWidget {
                                   padding: const EdgeInsets.only(top: 2),
                                   child: Text(
                                     item.description,
-                                    style: tt.bodySmall?.copyWith(
-                                        color: cs.onSurfaceVariant),
+                                    style: tt.bodySmall
+                                        ?.copyWith(color: cs.onSurfaceVariant),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -112,18 +113,21 @@ class CuratedDetailPage extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(item.language,
-                              style: const TextStyle(fontSize: 12)),
+                              style: TextStyle(
+                                  fontSize: 12, color: metadataColor)),
                           const SizedBox(width: 16),
                         ],
-                        const Icon(Icons.star_border, size: 14),
+                        Icon(Icons.star_border, size: 14, color: metadataColor),
                         const SizedBox(width: 2),
                         Text(_fmtStars(item.stars),
-                            style: const TextStyle(fontSize: 12)),
+                            style:
+                                TextStyle(fontSize: 12, color: metadataColor)),
                         const SizedBox(width: 16),
-                        const Icon(Icons.call_split, size: 14),
+                        Icon(Icons.call_split, size: 14, color: metadataColor),
                         const SizedBox(width: 2),
                         Text(_fmtStars(item.forks),
-                            style: const TextStyle(fontSize: 12)),
+                            style:
+                                TextStyle(fontSize: 12, color: metadataColor)),
                         const Spacer(),
                         if (item.isPromoted)
                           Container(
@@ -147,8 +151,8 @@ class CuratedDetailPage extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         '收录于 ${_fmtDate(item.curatedAt)}',
-                        style: TextStyle(
-                            fontSize: 11, color: cs.onSurfaceVariant),
+                        style:
+                            TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                       ),
                     ],
                   ],
@@ -188,17 +192,17 @@ class CuratedDetailPage extends StatelessWidget {
                 icon: Icons.auto_awesome_outlined,
                 title: 'AI 摘要',
                 child: MarkdownScrollFix(
-                child: MarkdownBody(
-                  data: item.aiSummary,
-                  selectable: true,
-                  onTapLink: (text, href, title) {
-                    if (href != null) {
-                      launchUrl(Uri.parse(href),
-                          mode: LaunchMode.externalApplication);
-                    }
-                  },
+                  child: MarkdownBody(
+                    data: item.aiSummary,
+                    selectable: true,
+                    onTapLink: (text, href, title) {
+                      if (href != null) {
+                        launchUrl(Uri.parse(href),
+                            mode: LaunchMode.externalApplication);
+                      }
+                    },
+                  ),
                 ),
-              ),
               ),
               const SizedBox(height: 16),
             ],
@@ -207,8 +211,8 @@ class CuratedDetailPage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () => context
-                    .push('/repository/${item.owner}/${item.repo}'),
+                onPressed: () =>
+                    context.push('/repository/${item.owner}/${item.repo}'),
                 icon: const Icon(Icons.source),
                 label: const Text('查看仓库详情'),
               ),

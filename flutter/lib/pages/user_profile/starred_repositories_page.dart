@@ -2,9 +2,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/feedback/cache_warning_banner.dart';
 import '../../components/repository/repo_context_menu.dart';
 import '../../models/repository.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// Starred repositories list for a given [username].
 /// Mirrors HarmonyOS StarredRepositoriesTabView.
@@ -58,6 +60,7 @@ class _StarredRepositoriesPageState extends State<StarredRepositoriesPage> {
       final items = result.data ?? [];
       setState(() {
         _loading = false;
+        _error = result.cacheWarning ?? '';
         if (refresh) {
           _repos = items;
         } else {
@@ -76,6 +79,7 @@ class _StarredRepositoriesPageState extends State<StarredRepositoriesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final hasWarning = _error.isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         title: Text('${widget.username} 的 Stars'),
@@ -89,19 +93,24 @@ class _StarredRepositoriesPageState extends State<StarredRepositoriesPage> {
                   : RefreshIndicator(
                       onRefresh: () => _load(refresh: true),
                       child: ListView.separated(
-                        itemCount: _repos.length + (_hasMore ? 1 : 0),
+                        itemCount: _repos.length +
+                            (_hasMore ? 1 : 0) +
+                            (hasWarning ? 1 : 0),
                         separatorBuilder: (_, __) =>
                             const Divider(height: 1, indent: 16),
                         itemBuilder: (context, i) {
-                          if (i >= _repos.length) {
+                          if (hasWarning && i == 0) {
+                            return CacheWarningBanner(message: _error);
+                          }
+                          final repoIndex = hasWarning ? i - 1 : i;
+                          if (repoIndex >= _repos.length) {
                             if (_hasMore && !_loading) _load();
                             return const Padding(
                               padding: EdgeInsets.all(16),
-                              child: Center(
-                                  child: CircularProgressIndicator()),
+                              child: Center(child: CircularProgressIndicator()),
                             );
                           }
-                          final repo = _repos[i];
+                          final repo = _repos[repoIndex];
                           return _RepoTile(
                             repo: repo,
                             onTap: () => context.push(
@@ -124,6 +133,7 @@ class _RepoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
     return InkWell(
       onTap: onTap,
       onLongPress: () => showRepoContextMenu(context, repo),
@@ -137,10 +147,10 @@ class _RepoTile extends StatelessWidget {
                 imageUrl: repo.owner?.avatarUrl ?? '',
                 width: 32,
                 height: 32,
-                placeholder: (_, __) =>
-                    Container(width: 32, height: 32, color: cs.surfaceContainerHighest),
-                errorWidget: (_, __, ___) =>
-                    Icon(Icons.account_circle, size: 32, color: cs.onSurfaceVariant),
+                placeholder: (_, __) => Container(
+                    width: 32, height: 32, color: cs.surfaceContainerHighest),
+                errorWidget: (_, __, ___) => Icon(Icons.account_circle,
+                    size: 32, color: cs.onSurfaceVariant),
               ),
             ),
             const SizedBox(width: 12),
@@ -152,7 +162,9 @@ class _RepoTile extends StatelessWidget {
                   RichText(
                     text: TextSpan(
                       style: TextStyle(
-                          fontSize: 14, color: cs.primary, fontWeight: FontWeight.w600),
+                          fontSize: 14,
+                          color: cs.primary,
+                          fontWeight: FontWeight.w600),
                       children: [
                         if (repo.owner?.login != null)
                           TextSpan(
@@ -190,21 +202,21 @@ class _RepoTile extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(repo.language,
-                            style: const TextStyle(fontSize: 11)),
+                            style:
+                                TextStyle(fontSize: 11, color: metadataColor)),
                         const SizedBox(width: 12),
                       ],
-                      const Icon(Icons.star_border, size: 13),
+                      Icon(Icons.star_border, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
                       Text('${repo.stargazersCount}',
-                          style: const TextStyle(fontSize: 11)),
+                          style: TextStyle(fontSize: 11, color: metadataColor)),
                       if (repo.fork) ...[
                         const SizedBox(width: 12),
-                        Icon(Icons.fork_right,
-                            size: 13, color: cs.onSurfaceVariant),
+                        Icon(Icons.fork_right, size: 13, color: metadataColor),
                         const SizedBox(width: 2),
                         Text('Fork',
-                            style: TextStyle(
-                                fontSize: 11, color: cs.onSurfaceVariant)),
+                            style:
+                                TextStyle(fontSize: 11, color: metadataColor)),
                       ],
                     ],
                   ),

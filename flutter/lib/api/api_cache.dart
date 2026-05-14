@@ -27,12 +27,11 @@ class CachedEntry {
   static CachedEntry fromJson(Map<String, dynamic> json) => CachedEntry(
         etag: json['etag'] as String?,
         body: json['body'],
-        fetchedAt: DateTime.fromMillisecondsSinceEpoch(
-            json['fetchedAt'] as int),
+        fetchedAt:
+            DateTime.fromMillisecondsSinceEpoch(json['fetchedAt'] as int),
       );
 
-  bool isFreshFor(Duration ttl) =>
-      DateTime.now().difference(fetchedAt) < ttl;
+  bool isFreshFor(Duration ttl) => DateTime.now().difference(fetchedAt) < ttl;
 }
 
 /// Persistent ETag/body cache for GET responses.
@@ -63,8 +62,7 @@ class ApiCache {
     if (params == null || params.isEmpty) return '$method $path';
     final sorted = params.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    final encoded =
-        sorted.map((e) => '${e.key}=${e.value}').join('&');
+    final encoded = sorted.map((e) => '${e.key}=${e.value}').join('&');
     return '$method $path?$encoded';
   }
 
@@ -124,13 +122,21 @@ class ApiCache {
 
   int get entryCount => _box?.length ?? 0;
 
-  String get formattedSize {
+  int get sizeInBytes {
     final box = _box;
-    if (box == null) return '0 B';
+    if (box == null) return 0;
     int bytes = 0;
     for (final v in box.values) {
       bytes += v.length;
     }
+    return bytes;
+  }
+
+  String get formattedSize {
+    return formatByteSize(sizeInBytes);
+  }
+
+  static String formatByteSize(int bytes) {
     if (bytes >= 1024 * 1024) {
       return '${(bytes / 1024 / 1024).toStringAsFixed(2)} MB';
     }

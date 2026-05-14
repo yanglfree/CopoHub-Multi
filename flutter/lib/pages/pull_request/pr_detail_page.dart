@@ -330,6 +330,7 @@ class _PrDetailPageState extends State<PrDetailPage>
               owner: widget.owner,
               repo: widget.repo,
               number: widget.number,
+              isDraft: isDraft,
               onUserTap: (login) => context.push('/user/$login'),
               onReviewPosted: _loadPr,
             ),
@@ -995,6 +996,7 @@ class _ReviewsTab extends StatefulWidget {
     required this.owner,
     required this.repo,
     required this.number,
+    required this.isDraft,
     required this.onUserTap,
     required this.onReviewPosted,
   });
@@ -1002,6 +1004,7 @@ class _ReviewsTab extends StatefulWidget {
   final String owner;
   final String repo;
   final int number;
+  final bool isDraft;
   final void Function(String) onUserTap;
   final VoidCallback onReviewPosted;
 
@@ -1018,6 +1021,7 @@ class _ReviewsTabState extends State<_ReviewsTab> {
         owner: widget.owner,
         repo: widget.repo,
         number: widget.number,
+        isDraft: widget.isDraft,
         onPosted: () {
           Navigator.of(ctx).pop();
           widget.onReviewPosted();
@@ -1029,6 +1033,7 @@ class _ReviewsTabState extends State<_ReviewsTab> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       children: [
@@ -1040,7 +1045,7 @@ class _ReviewsTabState extends State<_ReviewsTab> {
             child: OutlinedButton.icon(
               onPressed: _showReviewSheet,
               icon: const Icon(Icons.rate_review_outlined, size: 18),
-              label: const Text('提交审阅'),
+              label: Text(l10n.submitReview),
             ),
           ),
         ),
@@ -1190,11 +1195,13 @@ class _ReviewSheet extends StatefulWidget {
     required this.owner,
     required this.repo,
     required this.number,
+    required this.isDraft,
     required this.onPosted,
   });
   final String owner;
   final String repo;
   final int number;
+  final bool isDraft;
   final VoidCallback onPosted;
 
   @override
@@ -1216,6 +1223,13 @@ class _ReviewSheetState extends State<_ReviewSheet> {
 
   Future<void> _submit() async {
     if (_posting) return;
+    final l10n = AppLocalizations.of(context);
+    if (widget.isDraft) {
+      setState(() {
+        _error = l10n.draftPrReviewUnavailable;
+      });
+      return;
+    }
     setState(() {
       _posting = true;
       _error = null;
@@ -1233,7 +1247,11 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     } else {
       setState(() {
         _posting = false;
-        _error = r.message ?? '提交失败，请稍后重试';
+        _error = _reviewErrorMessage(
+          l10n,
+          r.message,
+          isDraft: widget.isDraft,
+        );
       });
     }
   }
@@ -1241,6 +1259,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -1251,7 +1270,7 @@ class _ReviewSheetState extends State<_ReviewSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('提交审阅',
+              Text(l10n.submitReview,
                   style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 16,
@@ -1336,6 +1355,20 @@ class _ReviewSheetState extends State<_ReviewSheet> {
       ),
     );
   }
+}
+
+String _reviewErrorMessage(
+  AppLocalizations l10n,
+  String? message, {
+  required bool isDraft,
+}) {
+  final raw = (message ?? '').trim();
+  if (raw.isEmpty) return l10n.submitReviewFailed;
+  final lower = raw.toLowerCase();
+  if (isDraft || lower.contains('draft')) {
+    return l10n.draftPrReviewUnavailable;
+  }
+  return raw;
 }
 
 class _ReviewEventTile extends StatelessWidget {

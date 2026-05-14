@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/feedback/cache_warning_banner.dart';
 import '../../components/repository/repo_context_menu.dart';
 import '../../components/repository/repository_activity_sparkline.dart';
 import '../../models/repository.dart';
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// Full repository list for the authenticated user (or any public user).
 ///
@@ -94,6 +96,7 @@ class _UserRepositoriesPageState extends State<UserRepositoriesPage> {
       final items = result.data ?? [];
       setState(() {
         _loading = false;
+        _error = result.cacheWarning ?? '';
         if (refresh) {
           _all = items;
         } else {
@@ -160,15 +163,7 @@ class _UserRepositoriesPageState extends State<UserRepositoriesPage> {
 
             // Error banner
             if (_error.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(_error,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.error)),
-                ),
-              ),
+              SliverToBoxAdapter(child: CacheWarningBanner(message: _error)),
 
             // Empty state (after initial load)
             if (!_loading && _all.isEmpty && _error.isEmpty)
@@ -268,6 +263,7 @@ class _RepoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
     final langColor = repo.language.isNotEmpty
         ? _hexToColor(Constants.getLanguageColor(repo.language))
         : null;
@@ -350,25 +346,21 @@ class _RepoTile extends StatelessWidget {
                             repo.language,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 12, color: cs.onSurfaceVariant),
+                            style:
+                                TextStyle(fontSize: 12, color: metadataColor),
                           ),
                         ),
                         const SizedBox(width: 12),
                       ],
-                      Icon(Icons.star_border,
-                          size: 14, color: cs.onSurfaceVariant),
+                      Icon(Icons.star_border, size: 14, color: metadataColor),
                       const SizedBox(width: 2),
                       Text('${repo.stargazersCount}',
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurfaceVariant)),
+                          style: TextStyle(fontSize: 12, color: metadataColor)),
                       const SizedBox(width: 12),
-                      Icon(Icons.call_split,
-                          size: 14, color: cs.onSurfaceVariant),
+                      Icon(Icons.call_split, size: 14, color: metadataColor),
                       const SizedBox(width: 2),
                       Text('${repo.forksCount}',
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurfaceVariant)),
+                          style: TextStyle(fontSize: 12, color: metadataColor)),
                     ],
                   ),
                 ],

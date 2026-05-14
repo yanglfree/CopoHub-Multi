@@ -13,6 +13,7 @@ import '../../models/user_status.dart';
 import '../../services/auth_service.dart';
 import '../../services/share_service.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// Public user profile page — mirrors HarmonyOS UserProfileView.
 class UserProfilePage extends StatefulWidget {
@@ -326,7 +327,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
             const SliverToBoxAdapter(child: Divider(height: 1)),
 
             // Organizations row — only for personal users
-            if (!_orgsLoading && _orgs.isNotEmpty && (_user?.type != 'Organization')) ...[
+            if (!_orgsLoading &&
+                _orgs.isNotEmpty &&
+                (_user?.type != 'Organization')) ...[
               SliverToBoxAdapter(child: _OrgRow(orgs: _orgs)),
               const SliverToBoxAdapter(child: Divider(height: 1)),
             ],
@@ -479,7 +482,9 @@ class _UserHeader extends StatelessWidget {
                       width: 72,
                       height: 72,
                       placeholder: (_, __) => Container(
-                          width: 72, height: 72, color: cs.surfaceContainerHighest),
+                          width: 72,
+                          height: 72,
+                          color: cs.surfaceContainerHighest),
                       errorWidget: (_, __, ___) =>
                           const Icon(Icons.account_circle, size: 72),
                     ),
@@ -494,8 +499,7 @@ class _UserHeader extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: cs.primaryContainer,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: cs.surface, width: 1.5),
+                          border: Border.all(color: cs.surface, width: 1.5),
                         ),
                         child: Text(
                           'Org',
@@ -1087,10 +1091,12 @@ class _PinnedRepoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
+    final metadataStyle = repoMetadataTextStyle(context);
     final langColor = repo.languageColor.isNotEmpty
         ? Color(int.tryParse(repo.languageColor.replaceFirst('#', '0xFF')) ??
             0xFF8b949e)
-        : cs.onSurfaceVariant;
+        : metadataColor;
 
     return Material(
       color: cs.surfaceContainer,
@@ -1147,21 +1153,18 @@ class _PinnedRepoCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Text(repo.languageName,
-                        style: Theme.of(context).textTheme.bodySmall),
+                    Text(repo.languageName, style: metadataStyle),
                     const SizedBox(width: 12),
                   ],
                   Icon(Icons.star_border_rounded,
-                      size: 13, color: cs.onSurfaceVariant),
+                      size: 13, color: metadataColor),
                   const SizedBox(width: 2),
-                  Text(_fmt(repo.stargazerCount),
-                      style: Theme.of(context).textTheme.bodySmall),
+                  Text(_fmt(repo.stargazerCount), style: metadataStyle),
                   const SizedBox(width: 10),
                   Icon(Icons.call_split_rounded,
-                      size: 13, color: cs.onSurfaceVariant),
+                      size: 13, color: metadataColor),
                   const SizedBox(width: 2),
-                  Text(_fmt(repo.forkCount),
-                      style: Theme.of(context).textTheme.bodySmall),
+                  Text(_fmt(repo.forkCount), style: metadataStyle),
                 ],
               ),
             ],
@@ -1185,6 +1188,8 @@ class _RepoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
+    final metadataStyle = repoMetadataTextStyle(context);
     return Column(
       children: [
         InkWell(
@@ -1232,21 +1237,21 @@ class _RepoTile extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 4),
-                            Text(repo.language,
-                                style: Theme.of(context).textTheme.bodySmall),
+                            Text(repo.language, style: metadataStyle),
                             const SizedBox(width: 10),
                           ],
-                          const Icon(Icons.star_border, size: 13),
+                          Icon(Icons.star_border,
+                              size: 13, color: metadataColor),
                           const SizedBox(width: 2),
                           Text(_fmt(repo.stargazersCount),
-                              style: Theme.of(context).textTheme.bodySmall),
+                              style: metadataStyle),
                           if (repo.fork) ...[
                             const SizedBox(width: 10),
                             Icon(Icons.fork_right,
-                                size: 13, color: cs.onSurfaceVariant),
+                                size: 13, color: metadataColor),
                             Text(' Fork',
                                 style: TextStyle(
-                                    fontSize: 11, color: cs.onSurfaceVariant)),
+                                    fontSize: 11, color: metadataColor)),
                           ],
                         ],
                       ),

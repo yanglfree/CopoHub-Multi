@@ -14,6 +14,7 @@ import '../../router/app_router.dart';
 import '../../services/auth_service.dart';
 import '../../l10n/app_localizations.dart';
 import '../../components/skeleton/skeleton.dart';
+import '../../utils/repo_metadata_style.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -122,7 +123,8 @@ class _ProfilePageState extends State<ProfilePage> {
         }
       }
 
-      debugPrint('Calculated activity: commits=$commitCount, repos=$repoCount, prs=$prCount');
+      debugPrint(
+          'Calculated activity: commits=$commitCount, repos=$repoCount, prs=$prCount');
 
       setState(() {
         _activity = UserActivitySummary(
@@ -300,7 +302,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: Center(
                         child: Text('CopoHub',
                             style: TextStyle(
-                                color: Theme.of(context).colorScheme.outlineVariant,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant,
                                 fontSize: 12)),
                       ),
                     ),
@@ -433,7 +437,8 @@ class _ProfileActionButtons extends StatelessWidget {
         Expanded(
           child: _ProfileActionButton(
             icon: Icons.emoji_emotions_outlined,
-            label: status?.isNotEmpty == true ? l10n.changeStatus : l10n.setStatus,
+            label:
+                status?.isNotEmpty == true ? l10n.changeStatus : l10n.setStatus,
             onPressed: onEditStatus,
           ),
         ),
@@ -1352,7 +1357,9 @@ class _PinnedReposCarouselState extends State<_PinnedReposCarousel> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  widget.isTopRepos ? AppLocalizations.of(context).topRepos : AppLocalizations.of(context).pinnedRepos,
+                  widget.isTopRepos
+                      ? AppLocalizations.of(context).topRepos
+                      : AppLocalizations.of(context).pinnedRepos,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ],
@@ -1422,10 +1429,12 @@ class _PinnedRepoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
+    final metadataStyle = repoMetadataTextStyle(context);
     final langColor = repo.languageColor.isNotEmpty
         ? Color(int.tryParse(repo.languageColor.replaceFirst('#', '0xFF')) ??
             0xFF8b949e)
-        : cs.onSurfaceVariant;
+        : metadataColor;
 
     return Material(
       color: cs.surfaceContainer,
@@ -1479,21 +1488,18 @@ class _PinnedRepoCard extends StatelessWidget {
                           shape: BoxShape.circle, color: langColor),
                     ),
                     const SizedBox(width: 4),
-                    Text(repo.languageName,
-                        style: Theme.of(context).textTheme.bodySmall),
+                    Text(repo.languageName, style: metadataStyle),
                     const SizedBox(width: 12),
                   ],
                   Icon(Icons.star_border_rounded,
-                      size: 13, color: cs.onSurfaceVariant),
+                      size: 13, color: metadataColor),
                   const SizedBox(width: 2),
-                  Text(_fmt(repo.stargazerCount),
-                      style: Theme.of(context).textTheme.bodySmall),
+                  Text(_fmt(repo.stargazerCount), style: metadataStyle),
                   const SizedBox(width: 10),
                   Icon(Icons.call_split_rounded,
-                      size: 13, color: cs.onSurfaceVariant),
+                      size: 13, color: metadataColor),
                   const SizedBox(width: 2),
-                  Text(_fmt(repo.forkCount),
-                      style: Theme.of(context).textTheme.bodySmall),
+                  Text(_fmt(repo.forkCount), style: metadataStyle),
                 ],
               ),
             ],
@@ -1819,7 +1825,10 @@ class _ActivitySummarySkeleton extends StatelessWidget {
             SkeletonBox(
               height: 104,
               radius: 12,
-              color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(100),
+              color: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withAlpha(100),
             ),
           ],
         ),

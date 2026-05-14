@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/feedback/cache_warning_banner.dart';
 import '../../components/repository/repo_context_menu.dart';
 import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../models/repository.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 import '../../l10n/app_localizations.dart';
 
 /// "Discover" tab — Popular / Latest repos from GitHub search.
@@ -65,8 +67,10 @@ class _DiscoverPageState extends State<DiscoverPage>
         body: TabBarView(
           controller: _tab,
           children: const [
-            _RepoSearchTab(query: 'stars:>1000', sort: 'stars', label: 'Popular'),
-            _RepoSearchTab(query: 'stars:>10', sort: 'updated', label: 'Latest'),
+            _RepoSearchTab(
+                query: 'stars:>1000', sort: 'stars', label: 'Popular'),
+            _RepoSearchTab(
+                query: 'stars:>10', sort: 'updated', label: 'Latest'),
           ],
         ),
       ),
@@ -135,6 +139,7 @@ class _RepoSearchTabState extends State<_RepoSearchTab>
           .toList();
       setState(() {
         _loading = false;
+        _error = result.cacheWarning ?? '';
         if (refresh) {
           _repos = items;
         } else {
@@ -164,9 +169,14 @@ class _RepoSearchTabState extends State<_RepoSearchTab>
       onRefresh: () => _load(refresh: true),
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: _repos.length + (_hasMore ? 1 : 0),
+        itemCount:
+            _repos.length + (_hasMore ? 1 : 0) + (_error.isNotEmpty ? 1 : 0),
         itemBuilder: (context, i) {
-          if (i >= _repos.length) {
+          if (_error.isNotEmpty && i == 0) {
+            return CacheWarningBanner(message: _error);
+          }
+          final repoIndex = _error.isNotEmpty ? i - 1 : i;
+          if (repoIndex >= _repos.length) {
             _load();
             return const Padding(
               padding: EdgeInsets.all(16),
@@ -175,8 +185,8 @@ class _RepoSearchTabState extends State<_RepoSearchTab>
           }
           return Column(
             children: [
-              _DiscoverRepoCard(repo: _repos[i]),
-              if (i < _repos.length - 1)
+              _DiscoverRepoCard(repo: _repos[repoIndex]),
+              if (repoIndex < _repos.length - 1)
                 const Divider(height: 1, indent: 16, endIndent: 16),
             ],
           );
@@ -195,6 +205,7 @@ class _DiscoverRepoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
 
     return InkWell(
       onTap: () => context.push('/repository/${repo.owner?.login}/${repo.name}',
@@ -241,21 +252,21 @@ class _DiscoverRepoCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(repo.language,
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      style: TextStyle(fontSize: 12, color: metadataColor)),
                   const SizedBox(width: 12),
                 ],
                 if (repo.stargazersCount > 0) ...[
-                  Icon(Icons.star_border, size: 13, color: cs.onSurfaceVariant),
+                  Icon(Icons.star_border, size: 13, color: metadataColor),
                   const SizedBox(width: 2),
                   Text(_fmt(repo.stargazersCount),
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      style: TextStyle(fontSize: 12, color: metadataColor)),
                   const SizedBox(width: 10),
                 ],
                 if (repo.forksCount > 0) ...[
-                  Icon(Icons.fork_right, size: 13, color: cs.onSurfaceVariant),
+                  Icon(Icons.fork_right, size: 13, color: metadataColor),
                   const SizedBox(width: 2),
                   Text(_fmt(repo.forksCount),
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      style: TextStyle(fontSize: 12, color: metadataColor)),
                 ],
               ],
             ),
@@ -265,7 +276,8 @@ class _DiscoverRepoCard extends StatelessWidget {
     );
   }
 
-  static String _fmt(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
+  static String _fmt(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────

@@ -22,6 +22,9 @@ class AppLocalizations {
   String get settings => _zh ? '设置' : 'Settings';
   String get accept => _zh ? '接受' : 'Accept';
   String get decline => _zh ? '拒绝' : 'Decline';
+  String get language => _zh ? '语言' : 'Language';
+  String get stars => _zh ? 'Star 数' : 'Stars';
+  String get license => _zh ? '协议' : 'License';
 
   // ── Components ─────────────────────────────────────────────────────────────
   // Contribution Calendar
@@ -58,6 +61,14 @@ class AppLocalizations {
   String get yesterday => _zh ? '昨天' : 'Yesterday';
   String get openDetails => _zh ? '打开详情' : 'Open Details';
   String get updated => _zh ? '更新' : 'Updated';
+  String get justNow => _zh ? '刚刚' : 'just now';
+  String minutesAgo(int count) => _zh ? '$count 分钟前' : '$count min ago';
+  String hoursAgo(int count) => _zh ? '$count 小时前' : '$count hours ago';
+  String daysAgo(int count) => _zh ? '$count 天前' : '$count days ago';
+  String monthsAgo(int count) => _zh ? '$count 个月前' : '$count months ago';
+  String yearsAgo(int count) => _zh ? '$count 年前' : '$count years ago';
+  String updatedAgo(String relativeTime) =>
+      _zh ? '更新于 $relativeTime' : 'Updated $relativeTime';
   String get sharePreview => _zh ? '分享预览' : 'Share Preview';
   String get shareImage => _zh ? '分享图片' : 'Share Image';
   String get generating => _zh ? '生成中…' : 'Generating…';
@@ -291,6 +302,21 @@ Contact Email: youdroid2048@gmail.com''';
 
   // ── Navigation & Router ────────────────────────────────────────────────────
   String get home => _zh ? '首页' : 'Home';
+  String get myRepositories => _zh ? '我的仓库' : 'My Repositories';
+  String get starredRepositories => _zh ? 'Star 仓库' : 'Starred Repositories';
+  String get allRepositories => _zh ? '全部仓库' : 'All repositories';
+  String get filter => _zh ? '筛选' : 'Filter';
+  String get filterRepositories => _zh ? '筛选仓库' : 'Filter repositories';
+  String get visibility => _zh ? '可见性' : 'Visibility';
+  String get visibilityAll => _zh ? '全部' : 'All';
+  String get visibilityPublic => _zh ? '公开' : 'Public';
+  String get visibilityPrivate => _zh ? '私有' : 'Private';
+  String get visibilityAllDescription =>
+      _zh ? '公开和私有仓库' : 'Public and private repositories';
+  String get visibilityPublicDescription =>
+      _zh ? '所有人可见的仓库' : 'Repositories visible to everyone';
+  String get visibilityPrivateDescription =>
+      _zh ? '仅你和协作者可见的仓库' : 'Repositories visible to you and collaborators';
   String get featured => _zh ? '精选' : 'Featured';
   String get notifications => _zh ? '通知' : 'Notifications';
   String get profile => _zh ? '我的' : 'Profile';
@@ -361,6 +387,12 @@ Contact Email: youdroid2048@gmail.com''';
 
   // ── Pull Request ──────────────────────────────────────────────────────────
   String get noPullRequests => _zh ? '暂无 Pull Requests' : 'No Pull Requests';
+  String get submitReview => _zh ? '提交审阅' : 'Submit review';
+  String get submitReviewFailed =>
+      _zh ? '提交审阅失败，请稍后重试' : 'Failed to submit review. Please try again later.';
+  String get draftPrReviewUnavailable => _zh
+      ? 'Draft 状态的 PR 不能提交审阅。请先将 PR 标记为 Ready for review，或改到评论页添加普通评论。'
+      : 'Draft pull requests cannot be reviewed. Mark the PR as ready for review first, or add a regular comment from the comments tab.';
   String get prMerge => _zh ? '合并 PR' : 'Merge PR';
   String get prClose => _zh ? '关闭 PR' : 'Close PR';
   String get prReopen => _zh ? '重新开启' : 'Reopen';

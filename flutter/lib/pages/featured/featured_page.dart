@@ -12,6 +12,7 @@ import '../../components/repository/repo_context_menu.dart';
 import '../../services/pro_member_service.dart';
 import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../utils/constants.dart';
+import '../../utils/repo_metadata_style.dart';
 
 /// "精选" tab page — mirrors HarmonyOS DailyView.
 /// Contains two top-level tabs:
@@ -24,7 +25,8 @@ class FeaturedPage extends StatefulWidget {
   State<FeaturedPage> createState() => _FeaturedPageState();
 }
 
-class _FeaturedPageState extends State<FeaturedPage> with SingleTickerProviderStateMixin {
+class _FeaturedPageState extends State<FeaturedPage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
   // ── GitHub精选 state ──────────────────────────────────────────────────────
@@ -105,7 +107,8 @@ class _FeaturedPageState extends State<FeaturedPage> with SingleTickerProviderSt
       if (_dedupedLoading) return;
     }
     if (force) {
-      await ApiCache.instance.invalidateMatching('/api/v1/trending/deduplicated');
+      await ApiCache.instance
+          .invalidateMatching('/api/v1/trending/deduplicated');
     }
     final page = loadMore ? _dedupedPage + 1 : 1;
     if (loadMore) {
@@ -154,10 +157,9 @@ class _FeaturedPageState extends State<FeaturedPage> with SingleTickerProviderSt
   // Date shown in the header. On the report tab, show the report's actual date
   // (which may be yesterday if today's report isn't ready yet); everywhere else
   // show the user's selected date so trending/deduped are unaffected.
-  String get _effectiveDisplayDate =>
-      _segment == 1 && _reportActualDate != null
-          ? _reportActualDate!
-          : _selectedDate;
+  String get _effectiveDisplayDate => _segment == 1 && _reportActualDate != null
+      ? _reportActualDate!
+      : _selectedDate;
 
   // Normalize date for weekly/monthly API requests.
   // Weekly data is anchored to Monday; monthly to the 1st of the month.
@@ -220,8 +222,9 @@ class _FeaturedPageState extends State<FeaturedPage> with SingleTickerProviderSt
         : await _dailyApi.getDailyReport(_selectedDate);
     final reportDate =
         result.isSuccess ? result.data!['date'] as String? : null;
-    final trendingDate =
-        (reportDate != null && reportDate.isNotEmpty) ? reportDate : _selectedDate;
+    final trendingDate = (reportDate != null && reportDate.isNotEmpty)
+        ? reportDate
+        : _selectedDate;
     final trendingResult = result.isSuccess
         ? await _dailyApi.getTrending(trendingDate, limit: 50)
         : null;
@@ -370,8 +373,6 @@ class _FeaturedPageState extends State<FeaturedPage> with SingleTickerProviderSt
     if (index == 2 && _deduped.isEmpty) _loadDeduped();
   }
 
-
-
   void _refresh() {
     if (_tabController.index == 0) {
       if (_segment == 0) {
@@ -504,8 +505,6 @@ class _FeaturedPageState extends State<FeaturedPage> with SingleTickerProviderSt
   }
 }
 
-
-
 // ── GitHub精选 tab ────────────────────────────────────────────────────────────
 
 // Pinned sliver header delegate for non-collapsing sticky headers.
@@ -608,7 +607,8 @@ class _GitHubTab extends StatefulWidget {
   State<_GitHubTab> createState() => _GitHubTabState();
 }
 
-class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMixin {
+class _GitHubTabState extends State<_GitHubTab>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -697,8 +697,7 @@ class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMix
                               style: const TextStyle(fontSize: 12)),
                           selected: active,
                           onSelected: (_) => widget.onSinceChanged(s),
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                         ),
@@ -734,9 +733,8 @@ class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMix
                         icon: Icon(
                           _searchVisible ? Icons.search_off : Icons.search,
                           size: 20,
-                          color: _searchVisible
-                              ? cs.primary
-                              : cs.onSurfaceVariant,
+                          color:
+                              _searchVisible ? cs.primary : cs.onSurfaceVariant,
                         ),
                         onPressed: () {
                           setState(() {
@@ -753,27 +751,19 @@ class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMix
                     ),
                     const SizedBox(width: 4),
                     ChoiceChip(
-                      label:
-                          const Text('累计', style: TextStyle(fontSize: 12)),
+                      label: const Text('累计', style: TextStyle(fontSize: 12)),
                       selected: widget.dedupedSort == 'total',
-                      onSelected: (_) =>
-                          widget.onDedupedSortChanged('total'),
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 4),
-                      materialTapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
+                      onSelected: (_) => widget.onDedupedSortChanged('total'),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     const SizedBox(width: 4),
                     ChoiceChip(
-                      label:
-                          const Text('最近', style: TextStyle(fontSize: 12)),
+                      label: const Text('最近', style: TextStyle(fontSize: 12)),
                       selected: widget.dedupedSort == 'recent',
-                      onSelected: (_) =>
-                          widget.onDedupedSortChanged('recent'),
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 4),
-                      materialTapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
+                      onSelected: (_) => widget.onDedupedSortChanged('recent'),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ],
                 ),
@@ -803,8 +793,8 @@ class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMix
                         )
                       : null,
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                      vertical: 8, horizontal: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -852,8 +842,7 @@ class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMix
         itemCount: widget.trending.length,
         separatorBuilder: (_, __) =>
             const Divider(height: 1, indent: 16, endIndent: 16),
-        itemBuilder: (context, i) =>
-            _TrendingCard(item: widget.trending[i]),
+        itemBuilder: (context, i) => _TrendingCard(item: widget.trending[i]),
       ),
     );
   }
@@ -896,8 +885,7 @@ class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMix
     }
     if (filtered.isEmpty) {
       return _Empty(
-        message:
-            _searchText.isNotEmpty ? '未找到匹配的仓库' : '暂无高频项目数据',
+        message: _searchText.isNotEmpty ? '未找到匹配的仓库' : '暂无高频项目数据',
       );
     }
     return RefreshIndicator(
@@ -932,8 +920,7 @@ class _GitHubTabState extends State<_GitHubTab> with AutomaticKeepAliveClientMix
                       ? const SizedBox(
                           width: 24,
                           height: 24,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : TextButton(
                           onPressed: widget.onLoadMoreDeduped,
@@ -975,8 +962,7 @@ class _DatePickerHeader extends StatelessWidget {
     if (current == null) return false;
     switch (since) {
       case 'weekly':
-        final currentMonday =
-            today.subtract(Duration(days: today.weekday - 1));
+        final currentMonday = today.subtract(Duration(days: today.weekday - 1));
         final dateMonday =
             current.subtract(Duration(days: current.weekday - 1));
         return currentMonday.year == dateMonday.year &&
@@ -1007,8 +993,7 @@ class _DatePickerHeader extends StatelessWidget {
         return _isCurrentPeriod() ? '本周 ($rangeStr)' : rangeStr;
       }
       if (since == 'monthly') {
-        final monthStr =
-            '${dt.year}年${dt.month.toString().padLeft(2, '0')}月';
+        final monthStr = '${dt.year}年${dt.month.toString().padLeft(2, '0')}月';
         return _isCurrentPeriod() ? '本月 ($monthStr)' : monthStr;
       }
       return formatDailyReportDateLabel(date);
@@ -1214,8 +1199,6 @@ class _SegBtn extends StatelessWidget {
   }
 }
 
-
-
 class _LanguageMenu extends StatelessWidget {
   const _LanguageMenu({
     required this.selectedLanguage,
@@ -1312,6 +1295,8 @@ class _TrendingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
+    final metadataStyle = repoMetadataTextStyle(context);
     return InkWell(
       onTap: () => context.push('/repository/${item.owner}/${item.name}'),
       onLongPress: () => showRepoContextMenuFor(
@@ -1386,10 +1371,9 @@ class _TrendingCard extends StatelessWidget {
                         _LangDot(language: item.language),
                         const SizedBox(width: 12),
                       ],
-                      const Icon(Icons.star_border, size: 13),
+                      Icon(Icons.star_border, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(item.stars),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(item.stars), style: metadataStyle),
                       if (item.starsDelta > 0) ...[
                         const SizedBox(width: 4),
                         Text(
@@ -1402,10 +1386,9 @@ class _TrendingCard extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(width: 10),
-                      const Icon(Icons.fork_right, size: 13),
+                      Icon(Icons.fork_right, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(item.forks),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(item.forks), style: metadataStyle),
                     ],
                   ),
                 ],
@@ -1472,12 +1455,10 @@ class _LangDot extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 4),
-          Text(language, style: Theme.of(context).textTheme.bodySmall),
+          Text(language, style: repoMetadataTextStyle(context)),
         ],
       );
 }
-
-
 
 class _FrequentCard extends StatelessWidget {
   const _FrequentCard({required this.item, required this.rank});
@@ -1500,6 +1481,8 @@ class _FrequentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
+    final metadataStyle = repoMetadataTextStyle(context);
     return InkWell(
       onTap: () => context.push('/repository/${item.owner}/${item.name}'),
       onLongPress: () => showRepoContextMenuFor(
@@ -1598,23 +1581,19 @@ class _FrequentCard extends StatelessWidget {
                         _LangDot(language: item.language),
                         const SizedBox(width: 10),
                       ],
-                      const Icon(Icons.star_border, size: 13),
+                      Icon(Icons.star_border, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(item.stars),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(item.stars), style: metadataStyle),
                       const SizedBox(width: 10),
-                      const Icon(Icons.fork_right, size: 13),
+                      Icon(Icons.fork_right, size: 13, color: metadataColor),
                       const SizedBox(width: 2),
-                      Text(_fmt(item.forks),
-                          style: Theme.of(context).textTheme.bodySmall),
+                      Text(_fmt(item.forks), style: metadataStyle),
                       const Spacer(),
-                      Icon(Icons.schedule,
-                          size: 11, color: cs.onSurfaceVariant),
+                      Icon(Icons.schedule, size: 11, color: metadataColor),
                       const SizedBox(width: 3),
                       Text(
                         _lastSeenLabel(),
-                        style: TextStyle(
-                            fontSize: 11, color: cs.onSurfaceVariant),
+                        style: TextStyle(fontSize: 11, color: metadataColor),
                       ),
                     ],
                   ),
@@ -1646,7 +1625,8 @@ class _CopoHubTab extends StatefulWidget {
   State<_CopoHubTab> createState() => _CopoHubTabState();
 }
 
-class _CopoHubTabState extends State<_CopoHubTab> with AutomaticKeepAliveClientMixin {
+class _CopoHubTabState extends State<_CopoHubTab>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -1654,7 +1634,9 @@ class _CopoHubTabState extends State<_CopoHubTab> with AutomaticKeepAliveClientM
   Widget build(BuildContext context) {
     super.build(context);
     if (widget.loading) return const CuratedListSkeleton();
-    if (widget.error.isNotEmpty) return _ErrorRetry(message: widget.error, onRetry: widget.onRetry);
+    if (widget.error.isNotEmpty) {
+      return _ErrorRetry(message: widget.error, onRetry: widget.onRetry);
+    }
     if (widget.items.isEmpty) return const _Empty(message: '暂无精选项目');
 
     final cs = Theme.of(context).colorScheme;
@@ -1675,8 +1657,7 @@ class _CopoHubTabState extends State<_CopoHubTab> with AutomaticKeepAliveClientM
                     '由 CopoHub 编辑团队精心挑选',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style:
-                        TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1713,6 +1694,7 @@ class _CuratedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final metadataColor = repoMetadataColor(cs);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
@@ -1835,23 +1817,22 @@ class _CuratedCard extends StatelessWidget {
                     const SizedBox(width: 10),
                   ],
                   const Spacer(),
-                  const Icon(Icons.star_border, size: 14),
+                  Icon(Icons.star_border, size: 14, color: metadataColor),
                   const SizedBox(width: 4),
                   Text(
                     _fmtStars(item.stars),
                     style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: cs.onSurfaceVariant),
+                        color: metadataColor),
                   ),
                   if (item.forks > 0) ...[
                     const SizedBox(width: 12),
-                    const Icon(Icons.fork_right, size: 14),
+                    Icon(Icons.fork_right, size: 14, color: metadataColor),
                     const SizedBox(width: 4),
                     Text(
                       _fmtStars(item.forks),
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      style: TextStyle(fontSize: 12, color: metadataColor),
                     ),
                   ],
                 ],
@@ -1994,14 +1975,13 @@ class _DayPickerDialogState extends State<_DayPickerDialog> {
 
   bool _canPrevMonth() {
     final prev = DateTime(_viewMonth.year, _viewMonth.month - 1);
-    return !prev.isBefore(
-        DateTime(widget.firstDate.year, widget.firstDate.month));
+    return !prev
+        .isBefore(DateTime(widget.firstDate.year, widget.firstDate.month));
   }
 
   bool _canNextMonth() {
     final next = DateTime(_viewMonth.year, _viewMonth.month + 1);
-    return !next
-        .isAfter(DateTime(widget.lastDate.year, widget.lastDate.month));
+    return !next.isAfter(DateTime(widget.lastDate.year, widget.lastDate.month));
   }
 
   List<DateTime?> _buildDays() {
@@ -2021,10 +2001,10 @@ class _DayPickerDialogState extends State<_DayPickerDialog> {
 
   bool _isEnabled(DateTime? day) {
     if (day == null) return false;
-    return !day.isBefore(DateTime(widget.firstDate.year,
-            widget.firstDate.month, widget.firstDate.day)) &&
-        !day.isAfter(DateTime(widget.lastDate.year, widget.lastDate.month,
-            widget.lastDate.day));
+    return !day.isBefore(DateTime(widget.firstDate.year, widget.firstDate.month,
+            widget.firstDate.day)) &&
+        !day.isAfter(DateTime(
+            widget.lastDate.year, widget.lastDate.month, widget.lastDate.day));
   }
 
   bool _isSelected(DateTime? day) =>
@@ -2047,8 +2027,7 @@ class _DayPickerDialogState extends State<_DayPickerDialog> {
     final numWeeks = days.length ~/ 7;
 
     return Dialog(
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: cs.surfaceContainerLowest,
       insetPadding: const EdgeInsets.symmetric(horizontal: 28),
       child: Padding(
@@ -2062,8 +2041,7 @@ class _DayPickerDialogState extends State<_DayPickerDialog> {
               child: Text(
                 '选择日期',
                 style: tt.titleSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w500),
+                    color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
               ),
             ),
             const SizedBox(height: 12),
@@ -2079,8 +2057,7 @@ class _DayPickerDialogState extends State<_DayPickerDialog> {
                 ),
                 Text(
                   '${_viewMonth.year}年${_viewMonth.month}月',
-                  style: tt.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 _PickerNavButton(
                   icon: Icons.chevron_right_rounded,
@@ -2182,9 +2159,8 @@ class _DayPickerDialogState extends State<_DayPickerDialog> {
                                         : today
                                             ? cs.primary
                                             : null,
-                                fontWeight: selected || today
-                                    ? FontWeight.w700
-                                    : null,
+                                fontWeight:
+                                    selected || today ? FontWeight.w700 : null,
                               ),
                             ),
                           ),
@@ -2221,8 +2197,18 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
   late int _selectedMonth;
 
   static const _monthLabels = [
-    '1月', '2月', '3月', '4月', '5月', '6月',
-    '7月', '8月', '9月', '10月', '11月', '12月',
+    '1月',
+    '2月',
+    '3月',
+    '4月',
+    '5月',
+    '6月',
+    '7月',
+    '8月',
+    '9月',
+    '10月',
+    '11月',
+    '12月',
   ];
 
   @override
@@ -2256,8 +2242,7 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
     final canNext = _year < widget.lastDate.year;
 
     return Dialog(
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: cs.surfaceContainerLowest,
       insetPadding: const EdgeInsets.symmetric(horizontal: 40),
       child: Padding(
@@ -2285,8 +2270,7 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
                 ),
                 Text(
                   '$_year年',
-                  style: tt.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 _PickerNavButton(
                   icon: Icons.chevron_right_rounded,
@@ -2325,8 +2309,7 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
                             _selectedYear = _year;
                             _selectedMonth = month;
                           });
-                          Navigator.of(ctx)
-                              .pop(DateTime(_year, month, 1));
+                          Navigator.of(ctx).pop(DateTime(_year, month, 1));
                         }
                       : null,
                 );
@@ -2438,14 +2421,13 @@ class _WeekPickerDialogState extends State<_WeekPickerDialog> {
 
   bool _canPrevMonth() {
     final prev = DateTime(_viewMonth.year, _viewMonth.month - 1);
-    return !prev.isBefore(
-        DateTime(widget.firstDate.year, widget.firstDate.month));
+    return !prev
+        .isBefore(DateTime(widget.firstDate.year, widget.firstDate.month));
   }
 
   bool _canNextMonth() {
     final next = DateTime(_viewMonth.year, _viewMonth.month + 1);
-    return !next
-        .isAfter(DateTime(widget.lastDate.year, widget.lastDate.month));
+    return !next.isAfter(DateTime(widget.lastDate.year, widget.lastDate.month));
   }
 
   List<DateTime?> _buildDays() {
@@ -2465,10 +2447,10 @@ class _WeekPickerDialogState extends State<_WeekPickerDialog> {
 
   bool _isDayEnabled(DateTime? day) {
     if (day == null) return false;
-    return !day.isBefore(DateTime(widget.firstDate.year,
-            widget.firstDate.month, widget.firstDate.day)) &&
-        !day.isAfter(DateTime(widget.lastDate.year, widget.lastDate.month,
-            widget.lastDate.day));
+    return !day.isBefore(DateTime(widget.firstDate.year, widget.firstDate.month,
+            widget.firstDate.day)) &&
+        !day.isAfter(DateTime(
+            widget.lastDate.year, widget.lastDate.month, widget.lastDate.day));
   }
 
   bool _isInSelectedWeek(DateTime? day) {
@@ -2500,8 +2482,7 @@ class _WeekPickerDialogState extends State<_WeekPickerDialog> {
     final numWeeks = days.length ~/ 7;
 
     return Dialog(
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       backgroundColor: cs.surfaceContainerLowest,
       insetPadding: const EdgeInsets.symmetric(horizontal: 28),
       child: Padding(
@@ -2516,8 +2497,7 @@ class _WeekPickerDialogState extends State<_WeekPickerDialog> {
               child: Text(
                 '选择周',
                 style: tt.titleSmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w500),
+                    color: cs.onSurfaceVariant, fontWeight: FontWeight.w500),
               ),
             ),
             const SizedBox(height: 12),
@@ -2534,8 +2514,7 @@ class _WeekPickerDialogState extends State<_WeekPickerDialog> {
                 ),
                 Text(
                   '${_viewMonth.year}年${_viewMonth.month}月',
-                  style: tt.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 _PickerNavButton(
                   icon: Icons.chevron_right_rounded,
@@ -2631,9 +2610,8 @@ class _WeekPickerDialogState extends State<_WeekPickerDialog> {
                                   : inSel
                                       ? cs.onPrimaryContainer
                                       : null,
-                              fontWeight: inSel || isToday
-                                  ? FontWeight.w700
-                                  : null,
+                              fontWeight:
+                                  inSel || isToday ? FontWeight.w700 : null,
                             ),
                           ),
                           if (isToday)

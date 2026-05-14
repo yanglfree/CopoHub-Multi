@@ -167,7 +167,11 @@ class GitHubApiClient {
         return ApiResponse.fail(result.error ?? 'request failed');
       }
       final body = result.data;
-      return ApiResponse.ok(parser != null ? parser(body) : body as T);
+      return ApiResponse.ok(
+        parser != null ? parser(body) : body as T,
+        fromCache: result.fromCache,
+        cacheWarning: result.cacheWarning,
+      );
     }
 
     final cachedForEtag = forceRefresh ? null : ApiCache.instance.get(cacheKey);
@@ -186,7 +190,11 @@ class GitHubApiClient {
         return ApiResponse.fail(raw.error ?? 'request failed');
       }
       final body = raw.data;
-      return ApiResponse.ok(parser != null ? parser(body) : body as T);
+      return ApiResponse.ok(
+        parser != null ? parser(body) : body as T,
+        fromCache: raw.fromCache,
+        cacheWarning: raw.cacheWarning,
+      );
     } finally {
       _inflight.remove(cacheKey);
     }
@@ -211,7 +219,7 @@ class GitHubApiClient {
 
       if (response.statusCode == 304 && cachedBody != null) {
         await ApiCache.instance.touch(cacheKey);
-        return ApiResponse.ok(cachedBody);
+        return ApiResponse.ok(cachedBody, fromCache: true);
       }
 
       final newEtag =
@@ -226,7 +234,16 @@ class GitHubApiClient {
       );
       return ApiResponse.ok(response.data);
     } on DioException catch (e) {
-      return _handleDioError<dynamic>(e);
+      final failure = _handleDioError<dynamic>(e);
+      if (cachedBody != null) {
+        final message = failure.message ?? failure.error ?? '请求失败，请稍后重试';
+        return ApiResponse.ok(
+          cachedBody,
+          fromCache: true,
+          cacheWarning: '无法刷新，正在显示缓存数据：$message',
+        );
+      }
+      return failure;
     }
   }
 

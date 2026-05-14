@@ -6,15 +6,29 @@ class ApiResponse<T> {
   final T? data;
   final String? error;
   final String? message;
+  final bool fromCache;
+  final String? cacheWarning;
 
   const ApiResponse({
     required this.success,
     this.data,
     this.error,
     this.message,
+    this.fromCache = false,
+    this.cacheWarning,
   });
 
-  factory ApiResponse.ok(T data) => ApiResponse(success: true, data: data);
+  factory ApiResponse.ok(
+    T data, {
+    bool fromCache = false,
+    String? cacheWarning,
+  }) =>
+      ApiResponse(
+        success: true,
+        data: data,
+        fromCache: fromCache,
+        cacheWarning: cacheWarning,
+      );
 
   factory ApiResponse.fail(String error, {String? message}) {
     final friendlyMessage = friendlyApiErrorMessage(
