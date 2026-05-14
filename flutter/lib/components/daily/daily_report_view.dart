@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../dialogs/app_dialog.dart';
 import '../markdown/markdown_scroll_fix.dart';
 import '../../utils/constants.dart';
 
@@ -914,18 +915,21 @@ class _TopicChip extends StatelessWidget {
 void _showReportInfoDialog(BuildContext context) {
   showDialog<void>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('关于每日报告'),
-      content: const Text(
-        '每日报告显示的是前一天的 GitHub Trending 数据。\n\n'
-        '当天的报告将在次日生成，因此今天看到的是昨天的报告，这是正常现象。',
-      ),
+    builder: (ctx) => AppDialog(
+      title: '关于每日报告',
+      icon: Icons.info_outline_rounded,
       actions: [
-        TextButton(
+        AppDialogAction(
+          label: '知道了',
+          isPrimary: true,
           onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('知道了'),
         ),
       ],
+      child: const Text(
+        '每日报告显示的是前一天的 GitHub Trending 数据。\n\n'
+        '当天的报告将在次日生成，因此今天看到的是昨天的报告，这是正常现象。',
+        style: TextStyle(height: 1.5),
+      ),
     ),
   );
 }

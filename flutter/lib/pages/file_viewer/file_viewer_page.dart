@@ -6,6 +6,7 @@ import 'package:highlight/highlight.dart' show highlight, Node;
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import '../../api/github_api_client.dart';
+import '../../components/dialogs/app_dialog.dart';
 
 // Extension → highlight.js language name mapping
 const _extLang = <String, String>{
@@ -601,28 +602,28 @@ class _JumpToLineDialogState extends State<_JumpToLineDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('跳转到行'),
-      content: TextField(
+    return AppDialog(
+      title: '跳转到行',
+      icon: Icons.format_list_numbered_rounded,
+      actions: [
+        AppDialogAction(
+          label: '取消',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        AppDialogAction(
+          label: '跳转',
+          isPrimary: true,
+          onPressed: _submit,
+        ),
+      ],
+      child: AppDialogTextField(
         controller: _controller,
         autofocus: true,
         keyboardType: TextInputType.number,
-        decoration: InputDecoration(
-          labelText: '行号 (1-${widget.totalLines})',
-          errorText: _errorText,
-        ),
+        label: '行号 (1-${widget.totalLines})',
+        errorText: _errorText,
         onSubmitted: (_) => _submit(),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        TextButton(
-          onPressed: _submit,
-          child: const Text('跳转'),
-        ),
-      ],
     );
   }
 }

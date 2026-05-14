@@ -35,26 +35,48 @@ class AppLocalizations {
   String get fri => _zh ? '周五' : 'Fri';
   String get less => _zh ? '少' : 'Less';
   String get more => _zh ? '多' : 'More';
-  String contributionsInLastYear(int count) => _zh
-      ? '过去一年有 $count 次贡献'
-      : '$count contributions in the last year';
-  String contributionsInYear(int count, int year) => _zh
-      ? '$year 年有 $count 次贡献'
-      : '$count contributions in $year';
-  String contributionsOnDate(int count, String date) => _zh
-      ? '$date 有 $count 次贡献'
-      : '$count contributions on $date';
-  String noContributionsOnDate(String date) => _zh
-      ? '$date 无贡献'
-      : 'No contributions on $date';
+  String contributionsInLastYear(int count) =>
+      _zh ? '过去一年有 $count 次贡献' : '$count contributions in the last year';
+  String contributionsInYear(int count, int year) =>
+      _zh ? '$year 年有 $count 次贡献' : '$count contributions in $year';
+  String contributionsOnDate(int count, String date) =>
+      _zh ? '$date 有 $count 次贡献' : '$count contributions on $date';
+  String noContributionsOnDate(String date) =>
+      _zh ? '$date 无贡献' : 'No contributions on $date';
 
   List<String> get months => _zh
-
-      ? ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
-      : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      ? [
+          '1月',
+          '2月',
+          '3月',
+          '4月',
+          '5月',
+          '6月',
+          '7月',
+          '8月',
+          '9月',
+          '10月',
+          '11月',
+          '12月'
+        ]
+      : [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec'
+        ];
 
   // Daily Report
-  String get dailyReportTitle => _zh ? 'GitHub Trending 日报' : 'GitHub Trending Daily';
+  String get dailyReportTitle =>
+      _zh ? 'GitHub Trending 日报' : 'GitHub Trending Daily';
   String get languageTrends => _zh ? '语言动态' : 'Language Trends';
   String get featuredRepos => _zh ? '精选仓库' : 'Featured Repos';
   String get today => _zh ? '今天' : 'Today';
@@ -72,7 +94,9 @@ class AppLocalizations {
   String get sharePreview => _zh ? '分享预览' : 'Share Preview';
   String get shareImage => _zh ? '分享图片' : 'Share Image';
   String get generating => _zh ? '生成中…' : 'Generating…';
-  String get shareSlogan => _zh ? '每天发现更多精彩仓库，尽在 CopoHub' : 'Discover more amazing repos every day on CopoHub';
+  String get shareSlogan => _zh
+      ? '每天发现更多精彩仓库，尽在 CopoHub'
+      : 'Discover more amazing repos every day on CopoHub';
   String get highlight => _zh ? '本期亮点' : 'Highlights';
 
   // Policy
@@ -285,17 +309,20 @@ Contact Email: youdroid2048@gmail.com''';
   String get viewAll => _zh ? '查看全部' : 'View All';
   String get noFollowers => _zh ? '暂无关注者' : 'No followers';
   String get noFollowing => _zh ? '暂无正在关注' : 'No following';
-  String get socialLoadFailed => _zh ? '社交信息加载失败' : 'Failed to load social info';
+  String get socialLoadFailed =>
+      _zh ? '社交信息加载失败' : 'Failed to load social info';
 
   // Dialogs & Forms
   String get editProfileTitle => _zh ? '编辑资料' : 'Edit Profile';
-  String get nameLabel => 'Name';
-  String get emailLabel => 'Public email';
-  String get blogLabel => 'Blog';
-  String get companyLabel => 'Company';
-  String get locationLabel => 'Location';
-  String get bioLabel => 'Bio';
+  String get nameLabel => _zh ? '姓名' : 'Name';
+  String get emailLabel => _zh ? '公开邮箱' : 'Public email';
+  String get blogLabel => _zh ? '博客' : 'Blog';
+  String get twitterUsernameLabel => _zh ? 'Twitter 用户名' : 'Twitter username';
+  String get companyLabel => _zh ? '公司' : 'Company';
+  String get locationLabel => _zh ? '位置' : 'Location';
+  String get bioLabel => _zh ? '简介' : 'Bio';
   String get availableForHire => _zh ? '允许雇佣' : 'Available for hire';
+  String get emojiLabel => _zh ? '表情' : 'Emoji';
   String get statusMessageLabel => _zh ? '状态信息' : 'Status message';
   String get busyLabel => _zh ? '忙碌 / 限制可用性' : 'Busy / limited availability';
   String get notFilled => _zh ? '未填写' : 'Not filled';
@@ -325,21 +352,29 @@ Contact Email: youdroid2048@gmail.com''';
 
   // ── Login Page ─────────────────────────────────────────────────────────────
   String get loginWithGithub => _zh ? '使用 GitHub 登录' : 'Sign in with GitHub';
-  String get githubMobileClient => _zh ? 'GitHub 移动客户端' : 'GitHub Mobile Client';
+  String get githubMobileClient =>
+      _zh ? 'GitHub 移动客户端' : 'GitHub Mobile Client';
   String get loginWithToken => _zh ? '使用访问令牌登录' : 'Sign in with Access Token';
   String get or => _zh ? '或者' : 'Or';
-  String get loginWithPAT => _zh ? '使用 Personal Access Token 登录' : 'Sign in with Personal Access Token';
-  String get patDesc => _zh ? '请在 GitHub 设置中生成 Personal Access Token，并确保包含 repo 和 user 权限。' : 'Generate a Personal Access Token in GitHub settings and ensure it has repo and user permissions.';
+  String get loginWithPAT => _zh
+      ? '使用 Personal Access Token 登录'
+      : 'Sign in with Personal Access Token';
+  String get patDesc => _zh
+      ? '请在 GitHub 设置中生成 Personal Access Token，并确保包含 repo 和 user 权限。'
+      : 'Generate a Personal Access Token in GitHub settings and ensure it has repo and user permissions.';
   String get paste => _zh ? '粘贴' : 'Paste';
   String get login => _zh ? '登录' : 'Login';
   String get back => _zh ? '返回' : 'Back';
-  String get enterPAT => _zh ? '输入您的 Personal Access Token' : 'Enter your Personal Access Token';
+  String get enterPAT =>
+      _zh ? '输入您的 Personal Access Token' : 'Enter your Personal Access Token';
   String get readAndAccept => _zh ? '我已阅读并接受 ' : 'I have read and accept ';
   String get termsOfService => _zh ? '《服务协议》' : 'Terms of Service';
   String get and => _zh ? ' 和 ' : ' and ';
   String get privacyPolicy => _zh ? '《隐私条款》' : 'Privacy Policy';
-  String get howToGetPAT => _zh ? '如何获取 Personal Access Token?' : 'How to get Personal Access Token?';
-  String get patHelpDialogTitle => _zh ? '如何获取 Personal Access Token' : 'How to Get a Personal Access Token';
+  String get howToGetPAT =>
+      _zh ? '如何获取 Personal Access Token?' : 'How to get Personal Access Token?';
+  String get patHelpDialogTitle =>
+      _zh ? '如何获取 Personal Access Token' : 'How to Get a Personal Access Token';
   String get patStep1 => _zh
       ? '打开 github.com 并登录，点击右上角头像，选择 Settings'
       : 'Go to github.com, sign in, click your avatar in the top-right corner, and select Settings';
@@ -361,10 +396,17 @@ Contact Email: youdroid2048@gmail.com''';
   String get version => _zh ? '版本' : 'Version';
 
   // Login Errors
-  String get loginFailedRetry => _zh ? '登录失败，请重试' : 'Login failed, please try again';
-  String get acceptTermsFirst => _zh ? '请先阅读并接受服务协议和隐私条款' : 'Please read and accept the Terms and Privacy Policy first';
-  String get enterPATFirst => _zh ? '请输入 Personal Access Token' : 'Please enter your Personal Access Token';
-  String get tokenLoginFailed => _zh ? 'Token 登录失败，请检查后重试' : 'Token login failed, please check and try again';
+  String get loginFailedRetry =>
+      _zh ? '登录失败，请重试' : 'Login failed, please try again';
+  String get acceptTermsFirst => _zh
+      ? '请先阅读并接受服务协议和隐私条款'
+      : 'Please read and accept the Terms and Privacy Policy first';
+  String get enterPATFirst => _zh
+      ? '请输入 Personal Access Token'
+      : 'Please enter your Personal Access Token';
+  String get tokenLoginFailed => _zh
+      ? 'Token 登录失败，请检查后重试'
+      : 'Token login failed, please check and try again';
 
   // ── Discover page ──────────────────────────────────────────────────────────
   String get discoverTitle => _zh ? '发现' : 'Discover';
@@ -412,8 +454,10 @@ Contact Email: youdroid2048@gmail.com''';
   String get createIssue => _zh ? '创建 Issue' : 'Create Issue';
   String get issueTitle => _zh ? '标题 *' : 'Title *';
   String get issueBody => _zh ? '描述（可选）' : 'Description (Optional)';
-  String get createIssueSuccess => _zh ? 'Issue 创建成功' : 'Issue created successfully';
-  String get createIssueFailed => _zh ? '创建 Issue 失败' : 'Failed to create issue';
+  String get createIssueSuccess =>
+      _zh ? 'Issue 创建成功' : 'Issue created successfully';
+  String get createIssueFailed =>
+      _zh ? '创建 Issue 失败' : 'Failed to create issue';
   String get titleCannotBeEmpty => _zh ? '标题不能为空' : 'Title cannot be empty';
   String get submit => _zh ? '提交' : 'Submit';
 
@@ -431,12 +475,14 @@ Contact Email: youdroid2048@gmail.com''';
   String get selectBranch => _zh ? '选择分支' : 'Select branch';
   String get branchesAndTags => _zh ? '分支与标签' : 'Branches & Tags';
   String get switchBranchOrTag => _zh ? '切换分支/标签' : 'Switch branches/tags';
-  String get searchOrCreateBranch => _zh ? '搜索或创建新分支' : 'Search or create a new branch';
+  String get searchOrCreateBranch =>
+      _zh ? '搜索或创建新分支' : 'Search or create a new branch';
   String get branches => _zh ? '分支' : 'Branches';
   String get tags => _zh ? '标签' : 'Tags';
   String get createBranch => _zh ? '新建分支' : 'Create branch';
   String get createBranchFailed => _zh ? '新建分支失败' : 'Failed to create branch';
-  String get createBranchSuccess => _zh ? '新建分支成功' : 'Branch created successfully';
+  String get createBranchSuccess =>
+      _zh ? '新建分支成功' : 'Branch created successfully';
   String get source => _zh ? '源自' : 'Source';
   String get sourceBranch => _zh ? '源分支' : 'Source branch';
 

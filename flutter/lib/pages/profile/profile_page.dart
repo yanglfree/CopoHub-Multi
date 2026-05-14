@@ -678,7 +678,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
                 controller: _blog, label: l10n.blogLabel, hint: l10n.notFilled),
             _ProfileTextField(
               controller: _twitter,
-              label: 'Twitter username',
+              label: l10n.twitterUsernameLabel,
               hint: l10n.notFilled,
             ),
             _ProfileTextField(
@@ -697,14 +697,12 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
               hint: l10n.notFilled,
               maxLines: 3,
             ),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
+            AppDialogCheckboxTile(
               value: _hireable,
               onChanged: _saving
                   ? null
                   : (value) => setState(() => _hireable = value ?? false),
-              title: Text(l10n.availableForHire),
-              controlAffinity: ListTileControlAffinity.leading,
+              label: l10n.availableForHire,
             ),
             if (_error.isNotEmpty)
               Padding(
@@ -827,16 +825,14 @@ class _EditStatusDialogState extends State<_EditStatusDialog> {
               label: l10n.statusMessageLabel,
               hint: l10n.notFilled,
             ),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
+            AppDialogCheckboxTile(
               value: _limitedAvailability,
               onChanged: _saving
                   ? null
                   : (value) => setState(
                         () => _limitedAvailability = value ?? false,
                       ),
-              title: Text(l10n.busyLabel),
-              controlAffinity: ListTileControlAffinity.leading,
+              label: l10n.busyLabel,
             ),
             if (_error.isNotEmpty)
               Padding(
@@ -867,42 +863,31 @@ class _StatusEmojiDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: DropdownButtonFormField<String>(
-        value: _statusEmojiOptions.any((option) => option.value == value)
-            ? value
-            : '',
-        decoration: InputDecoration(
-          labelText: 'Emoji',
-          border: const OutlineInputBorder(),
-          isDense: true,
-          hintStyle: TextStyle(
-            color: cs.onSurfaceVariant.withAlpha(107),
-          ),
-        ),
-        items: _statusEmojiOptions.map((option) {
-          return DropdownMenuItem(
-            value: option.value,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    option.emoji,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18),
-                  ),
+    return AppDialogDropdownField<String>(
+      value: _statusEmojiOptions.any((option) => option.value == value)
+          ? value
+          : '',
+      label: AppLocalizations.of(context).emojiLabel,
+      items: _statusEmojiOptions.map((option) {
+        return DropdownMenuItem(
+          value: option.value,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28,
+                child: Text(
+                  option.emoji,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 18),
                 ),
-                const SizedBox(width: 10),
-                Text(option.label),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: onChanged,
-      ),
+              ),
+              const SizedBox(width: 10),
+              Text(option.label),
+            ],
+          ),
+        );
+      }).toList(),
+      onChanged: onChanged,
     );
   }
 }
@@ -922,25 +907,11 @@ class _ProfileTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: controller,
-        maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          border: const OutlineInputBorder(),
-          isDense: true,
-          hintStyle: TextStyle(
-            color: cs.onSurfaceVariant.withAlpha(107),
-          ),
-          labelStyle: TextStyle(
-            color: cs.onSurfaceVariant.withAlpha(199),
-          ),
-        ),
-      ),
+    return AppDialogTextField(
+      controller: controller,
+      label: label,
+      hint: hint,
+      maxLines: maxLines,
     );
   }
 }

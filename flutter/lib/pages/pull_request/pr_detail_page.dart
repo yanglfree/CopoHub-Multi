@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
+import '../../components/dialogs/app_dialog.dart';
 import '../../components/markdown/markdown_scroll_fix.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/link_utils.dart';
@@ -106,8 +107,8 @@ class _PrDetailPageState extends State<PrDetailPage>
   Future<void> _loadFiles() async {
     if (_filesLoading || _files.isNotEmpty) return;
     setState(() => _filesLoading = true);
-    final r =
-        await _api.getPullRequestFiles(widget.owner, widget.repo, widget.number);
+    final r = await _api.getPullRequestFiles(
+        widget.owner, widget.repo, widget.number);
     if (!mounted) return;
     setState(() {
       _files = r.data ?? [];
@@ -192,11 +193,28 @@ class _PrDetailPageState extends State<PrDetailPage>
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text('选择合并方式',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      color: cs.onSurface)),
+              child: Row(
+                children: [
+                  const SizedBox(width: 48),
+                  Expanded(
+                    child: Text(
+                      '选择合并方式',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '合并方式说明',
+                    onPressed: () => _showMergeMethodTip(ctx),
+                    icon: const Icon(Icons.info_outline_rounded),
+                    color: cs.primary,
+                  ),
+                ],
+              ),
             ),
             _MergeOption(
               icon: Icons.merge,
@@ -232,14 +250,55 @@ class _PrDetailPageState extends State<PrDetailPage>
     );
   }
 
+  void _showMergeMethodTip(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AppDialog(
+        title: '合并方式说明',
+        icon: Icons.info_outline_rounded,
+        actions: [
+          AppDialogAction(
+            label: '知道了',
+            isPrimary: true,
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+        ],
+        child: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _MergeMethodTipItem(
+                title: 'Merge commit',
+                summary: '保留分支上的所有提交，并额外生成一个 merge commit。',
+                scenario: '适合需要完整保留开发分支上下文、PR 内每个提交都有独立意义，或团队希望清楚看到分支合入点的情况。',
+              ),
+              SizedBox(height: 14),
+              _MergeMethodTipItem(
+                title: 'Squash and merge',
+                summary: '把 PR 中的所有提交压缩成一个新提交后合入主分支。',
+                scenario: '适合小功能、修复、提交历史里包含 WIP 或反复调整记录，希望主分支历史保持简洁的情况。',
+              ),
+              SizedBox(height: 14),
+              _MergeMethodTipItem(
+                title: 'Rebase and merge',
+                summary: '将 PR 中的提交逐个变基到主分支顶端，不创建 merge commit。',
+                scenario: '适合提交已经整理干净、希望保留多个提交粒度，同时保持主分支线性历史的情况。',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('PR #${widget.number}',
-            style: const TextStyle(fontSize: 15)),
+        title:
+            Text('PR #${widget.number}', style: const TextStyle(fontSize: 15)),
       ),
       body: _prLoading
           ? const Center(child: CircularProgressIndicator())
@@ -368,12 +427,14 @@ class _PrHeader extends StatelessWidget {
     final login = user['login'] as String? ?? '';
     final avatar = user['avatar_url'] as String? ?? '';
     final createdAt = pr['created_at'] as String? ?? '';
-    final labels = (pr['labels'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
-    final head = (pr['head'] as Map<String, dynamic>?)?['label'] as String?
-        ?? (pr['head'] as Map<String, dynamic>?)?['ref'] as String? ?? '';
-    final base = (pr['base'] as Map<String, dynamic>?)?['label'] as String?
-        ?? (pr['base'] as Map<String, dynamic>?)?['ref'] as String? ?? '';
+    final labels =
+        (pr['labels'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+    final head = (pr['head'] as Map<String, dynamic>?)?['label'] as String? ??
+        (pr['head'] as Map<String, dynamic>?)?['ref'] as String? ??
+        '';
+    final base = (pr['base'] as Map<String, dynamic>?)?['label'] as String? ??
+        (pr['base'] as Map<String, dynamic>?)?['ref'] as String? ??
+        '';
     final commits = pr['commits'] as int? ?? 0;
     final additions = pr['additions'] as int? ?? 0;
     final deletions = pr['deletions'] as int? ?? 0;
@@ -433,8 +494,8 @@ class _PrHeader extends StatelessWidget {
                     Flexible(
                       child: Text(
                         base,
-                        style: TextStyle(
-                            fontSize: 12, color: cs.onSurfaceVariant),
+                        style:
+                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -471,8 +532,8 @@ class _PrHeader extends StatelessWidget {
                           color: cs.primary)),
                   const SizedBox(width: 6),
                   Text(_fmtDate(createdAt),
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -484,15 +545,15 @@ class _PrHeader extends StatelessWidget {
                 runSpacing: 4,
                 children: labels.map((l) {
                   final hex = l['color'] as String? ?? 'e0e0e0';
-                  final bgColor =
-                      Color(int.tryParse('0xFF$hex') ?? 0xFFe0e0e0);
+                  final bgColor = Color(int.tryParse('0xFF$hex') ?? 0xFFe0e0e0);
                   final brightness =
                       ThemeData.estimateBrightnessForColor(bgColor);
-                  final fgColor =
-                      brightness == Brightness.dark ? Colors.white : Colors.black;
+                  final fgColor = brightness == Brightness.dark
+                      ? Colors.white
+                      : Colors.black;
                   return Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: bgColor,
                       borderRadius: BorderRadius.circular(12),
@@ -514,9 +575,7 @@ class _PrHeader extends StatelessWidget {
               Row(
                 children: [
                   if (commits > 0) ...[
-                    _StatChip(
-                        icon: Icons.commit,
-                        label: '$commits 提交'),
+                    _StatChip(icon: Icons.commit, label: '$commits 提交'),
                     const SizedBox(width: 10),
                   ],
                   if (changedFiles > 0)
@@ -794,8 +853,7 @@ class _CommentsTabState extends State<_CommentsTab> {
                   ? const SizedBox(
                       width: 36,
                       height: 36,
-                      child:
-                          CircularProgressIndicator(strokeWidth: 2))
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : IconButton.filled(
                       onPressed: _post,
                       icon: const Icon(Icons.send, size: 18),
@@ -972,8 +1030,7 @@ class _FilesTabState extends State<_FilesTab>
                         color: Color(0xFF1a7f37),
                         fontWeight: FontWeight.w600,
                         fontSize: 12)),
-              if (additions > 0 && deletions > 0)
-                const SizedBox(width: 4),
+              if (additions > 0 && deletions > 0) const SizedBox(width: 4),
               if (deletions > 0)
                 Text('-$deletions',
                     style: const TextStyle(
@@ -1060,14 +1117,12 @@ class _ReviewsTabState extends State<_ReviewsTab> {
                       const Divider(height: 1, indent: 16, endIndent: 16),
                   itemBuilder: (context, i) {
                     final review = widget.reviews[i];
-                    final user =
-                        review['user'] as Map<String, dynamic>? ?? {};
+                    final user = review['user'] as Map<String, dynamic>? ?? {};
                     final login = user['login'] as String? ?? '';
                     final avatar = user['avatar_url'] as String? ?? '';
                     final state = review['state'] as String? ?? '';
                     final body = review['body'] as String? ?? '';
-                    final submittedAt =
-                        review['submitted_at'] as String? ?? '';
+                    final submittedAt = review['submitted_at'] as String? ?? '';
 
                     Color stateColor;
                     IconData stateIcon;
@@ -1261,8 +1316,8 @@ class _ReviewSheetState extends State<_ReviewSheet> {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -1322,16 +1377,15 @@ class _ReviewSheetState extends State<_ReviewSheet> {
                 const SizedBox(height: 12),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: cs.errorContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     _error!,
-                    style: TextStyle(
-                        fontSize: 13, color: cs.onErrorContainer),
+                    style: TextStyle(fontSize: 13, color: cs.onErrorContainer),
                   ),
                 ),
               ],
@@ -1409,8 +1463,8 @@ class _ReviewEventTile extends StatelessWidget {
                           fontSize: 14,
                           color: selected ? color : cs.onSurface)),
                   Text(subtitle,
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -1443,14 +1497,72 @@ class _StatChip extends StatelessWidget {
       children: [
         Icon(icon, size: 13, color: cs.onSurfaceVariant),
         const SizedBox(width: 4),
-        Text(label,
-            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        Text(label, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
       ],
     );
   }
 }
 
 // ── Merge option tile ─────────────────────────────────────────────────────────
+
+class _MergeMethodTipItem extends StatelessWidget {
+  const _MergeMethodTipItem({
+    required this.title,
+    required this.summary,
+    required this.scenario,
+  });
+
+  final String title;
+  final String summary;
+  final String scenario;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Icon(Icons.circle, size: 7, color: cs.primary),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: tt.titleSmall?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                summary,
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.onSurface,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                scenario,
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _MergeOption extends StatelessWidget {
   const _MergeOption({
@@ -1483,8 +1595,8 @@ class _MergeOption extends StatelessWidget {
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 14)),
                   Text(subtitle,
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                      style:
+                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -1550,17 +1662,18 @@ class _GithubMarkdown extends StatelessWidget {
           decoration: TextDecoration.underline,
           decorationColor: link),
       code: TextStyle(
-          fontSize: 12, fontFamily: 'monospace', backgroundColor: codeBg,
+          fontSize: 12,
+          fontFamily: 'monospace',
+          backgroundColor: codeBg,
           color: fg),
       codeblockPadding: const EdgeInsets.all(12),
-      codeblockDecoration: BoxDecoration(
-          color: preBg, borderRadius: BorderRadius.circular(6)),
+      codeblockDecoration:
+          BoxDecoration(color: preBg, borderRadius: BorderRadius.circular(6)),
       blockquoteDecoration: BoxDecoration(
           border: Border(left: BorderSide(color: border, width: 4))),
       blockquotePadding: const EdgeInsets.only(left: 12),
       tableBorder: TableBorder.all(color: border, width: 1),
-      tableCellsPadding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       horizontalRuleDecoration: BoxDecoration(
           border: Border(bottom: BorderSide(color: border, width: 1))),
     );
@@ -1579,7 +1692,8 @@ class _GithubMarkdown extends StatelessWidget {
           if (src.isEmpty) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Image.network(src, fit: BoxFit.contain,
+            child: Image.network(src,
+                fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink()),
           );
         },
