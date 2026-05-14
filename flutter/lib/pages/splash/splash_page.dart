@@ -5,6 +5,7 @@ import '../../router/app_router.dart';
 import '../../utils/startup_trace.dart';
 
 const _appIconAsset = 'assets/images/ic_icon.png';
+const _postAnimationHold = Duration(milliseconds: 400);
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -18,6 +19,7 @@ class _SplashPageState extends State<SplashPage>
   late final AnimationController _ctrl;
   late final Animation<double> _iconOpacity;
   late final Animation<double> _textOpacity;
+  late final Future<void> _introAnimation;
 
   @override
   void initState() {
@@ -39,7 +41,7 @@ class _SplashPageState extends State<SplashPage>
       ),
     );
 
-    _ctrl.forward();
+    _introAnimation = _ctrl.forward();
     _waitForAuth();
   }
 
@@ -53,28 +55,30 @@ class _SplashPageState extends State<SplashPage>
     final auth = AuthService.instance;
     StartupTrace.log('SplashPage.waitForAuth', 'authState=${auth.authState}');
     if (auth.authState != AuthState.initializing) {
-      _navigateAfterDelay(auth.isLoggedIn);
+      _navigateAfterIntro(auth.isLoggedIn);
       return;
     }
     void listener() {
       if (auth.authState != AuthState.initializing) {
         auth.removeListener(listener);
         StartupTrace.log('SplashPage.authResolved', 'authState=${auth.authState}');
-        if (mounted) _navigateAfterDelay(auth.isLoggedIn);
+        if (mounted) _navigateAfterIntro(auth.isLoggedIn);
       }
     }
 
     auth.addListener(listener);
   }
 
-  void _navigateAfterDelay(bool loggedIn) {
-    StartupTrace.log('SplashPage.navigateAfterDelay', 'loggedIn=$loggedIn');
-    Future.delayed(const Duration(milliseconds: 1800), () {
+  void _navigateAfterIntro(bool loggedIn) {
+    StartupTrace.log('SplashPage.navigateAfterIntro', 'loggedIn=$loggedIn');
+    () async {
+      await _introAnimation;
+      await Future<void>.delayed(_postAnimationHold);
       if (!mounted) return;
       final dest = loggedIn ? AppRoutes.dashboard : AppRoutes.login;
       StartupTrace.log('SplashPage.navigate', 'to=$dest');
       context.go(dest);
-    });
+    }();
   }
 
   @override

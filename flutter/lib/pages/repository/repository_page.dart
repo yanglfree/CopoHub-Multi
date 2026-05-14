@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../components/markdown/markdown_scroll_fix.dart';
@@ -12,6 +13,8 @@ import '../../models/repository.dart';
 import '../../services/share_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/link_utils.dart';
+
+const _readmeAnchorMarker = 'copohub-readme-anchor';
 
 /// Repository detail page — README / 代码 / Issues / Commits / Releases tabs.
 class RepositoryPage extends StatefulWidget {
@@ -41,6 +44,7 @@ class _RepositoryPageState extends State<RepositoryPage>
   bool _loading = true;
   String _error = '';
   bool _isStarred = false;
+  bool _isStarUpdating = false;
   int _starCount = 0;
   List<Map<String, dynamic>> _branches = [];
   List<Map<String, dynamic>> _tags = [];
@@ -94,6 +98,12 @@ class _RepositoryPageState extends State<RepositoryPage>
     });
   }
 
+  void _openRepositoryTab(int index) {
+    if (index < 0 || index >= _tab.length) return;
+    if (_tab.index == index) return;
+    _tab.animateTo(index);
+  }
+
   Future<void> _loadRepo() async {
     if (_repository == null) {
       setState(() {
@@ -145,19 +155,29 @@ class _RepositoryPageState extends State<RepositoryPage>
   }
 
   Future<void> _toggleStar() async {
-    if (_repository == null) return;
-    if (_isStarred) {
-      await _api.unstarRepository(widget.owner, widget.repo);
+    if (_repository == null || _isStarUpdating) return;
+
+    final wasStarred = _isStarred;
+    setState(() => _isStarUpdating = true);
+
+    final result = wasStarred
+        ? await _api.unstarRepository(widget.owner, widget.repo)
+        : await _api.starRepository(widget.owner, widget.repo);
+
+    if (!mounted) return;
+
+    if (result.success) {
       setState(() {
-        _isStarred = false;
-        _starCount = (_starCount - 1).clamp(0, 999999999);
+        _isStarred = !wasStarred;
+        _starCount =
+            wasStarred ? (_starCount - 1).clamp(0, 999999999) : _starCount + 1;
+        _isStarUpdating = false;
       });
     } else {
-      await _api.starRepository(widget.owner, widget.repo);
-      setState(() {
-        _isStarred = true;
-        _starCount++;
-      });
+      setState(() => _isStarUpdating = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message ?? '操作失败，请重试')),
+      );
     }
   }
 
@@ -221,8 +241,8 @@ class _RepositoryPageState extends State<RepositoryPage>
                 icon: const Icon(Icons.share_outlined),
                 tooltip: '分享',
                 onPressed: () async {
-                  final box = _shareButtonKey.currentContext
-                      ?.findRenderObject() as RenderBox?;
+                  final box = _shareButtonKey.currentContext?.findRenderObject()
+                      as RenderBox?;
                   final origin = box != null
                       ? box.localToGlobal(Offset.zero) & box.size
                       : null;
@@ -238,12 +258,9 @@ class _RepositoryPageState extends State<RepositoryPage>
                   } catch (_) {}
                 },
               ),
-              IconButton(
-                icon: Icon(
-                  _isStarred ? Icons.star : Icons.star_border,
-                  color: _isStarred ? Colors.amber : null,
-                ),
-                tooltip: _isStarred ? '取消 Star' : 'Star',
+              _StarActionButton(
+                isStarred: _isStarred,
+                isLoading: _isStarUpdating,
                 onPressed: _toggleStar,
               ),
             ],
@@ -272,7 +289,8 @@ class _RepositoryPageState extends State<RepositoryPage>
                   repo: widget.repo,
                   defaultBranch: repo.defaultBranch,
                   scrollResetVersion: _tabScrollResetVersions[0],
-                  isDark: Theme.of(context).brightness == Brightness.dark),
+                  isDark: Theme.of(context).brightness == Brightness.dark,
+                  onOpenRepositoryTab: _openRepositoryTab),
               _CodeTab(
                   owner: widget.owner,
                   repo: widget.repo,
@@ -329,6 +347,127 @@ class _PinnedTabBarDelegate extends SliverPersistentHeaderDelegate {
 }
 
 // ── Repository header ─────────────────────────────────────────────────────────
+
+class _StarActionButton extends StatefulWidget {
+  const _StarActionButton({
+    required this.isStarred,
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  final bool isStarred;
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  @override
+  State<_StarActionButton> createState() => _StarActionButtonState();
+}
+
+class _StarActionButtonState extends State<_StarActionButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 820),
+    );
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StarActionButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isLoading != widget.isLoading) {
+      _syncAnimation();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _syncAnimation() {
+    if (widget.isLoading) {
+      _controller.repeat();
+    } else {
+      _controller
+        ..stop()
+        ..reset();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final targetStarred =
+        widget.isLoading ? !widget.isStarred : widget.isStarred;
+    final tooltip = widget.isLoading
+        ? '处理中'
+        : widget.isStarred
+            ? '取消 Star'
+            : 'Star';
+
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: widget.isLoading ? null : widget.onPressed,
+      icon: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final progress = widget.isLoading ? _controller.value : 0.0;
+          final pulse = widget.isLoading
+              ? 1.0 + 0.16 * math.sin(progress * math.pi)
+              : 1.0;
+          final rotation =
+              widget.isLoading ? math.sin(progress * math.pi * 2) * 0.16 : 0.0;
+          final sparkleOpacity =
+              widget.isLoading ? math.sin(progress * math.pi).abs() : 0.0;
+          final sparkleOffset =
+              widget.isLoading ? -2.0 * math.sin(progress * math.pi) : 0.0;
+
+          return SizedBox(
+            width: 28,
+            height: 28,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Transform.rotate(
+                  angle: rotation,
+                  child: Transform.scale(
+                    scale: pulse,
+                    child: Icon(
+                      targetStarred ? Icons.star : Icons.star_border,
+                      color: targetStarred || widget.isStarred
+                          ? Colors.amber
+                          : null,
+                    ),
+                  ),
+                ),
+                if (widget.isLoading)
+                  Positioned(
+                    top: 1 + sparkleOffset,
+                    right: 1,
+                    child: Opacity(
+                      opacity: sparkleOpacity.clamp(0.0, 1.0),
+                      child: const Icon(
+                        Icons.star,
+                        size: 8,
+                        color: Colors.amber,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
 
 class _RepoHeader extends StatelessWidget {
   const _RepoHeader({
@@ -582,12 +721,14 @@ class _ReadmeTab extends StatefulWidget {
     required this.defaultBranch,
     required this.scrollResetVersion,
     required this.isDark,
+    required this.onOpenRepositoryTab,
   });
   final String owner;
   final String repo;
   final String defaultBranch;
   final int scrollResetVersion;
   final bool isDark;
+  final ValueChanged<int> onOpenRepositoryTab;
 
   @override
   State<_ReadmeTab> createState() => _ReadmeTabState();
@@ -602,6 +743,9 @@ class _ReadmeTabState extends State<_ReadmeTab>
   bool _loading = true;
   bool _hasError = false;
   String? _markdown;
+  List<({bool isTable, String content, GlobalKey? anchorKey})> _readmeSections =
+      const [];
+  final Map<String, GlobalKey> _anchorKeys = {};
 
   @override
   bool get wantKeepAlive => true;
@@ -627,9 +771,11 @@ class _ReadmeTabState extends State<_ReadmeTab>
       _loading = true;
       _hasError = false;
       _markdown = null;
+      _readmeSections = const [];
       _readmePath = 'README.md';
       _downloadUrl = '';
       _htmlUrl = '';
+      _anchorKeys.clear();
     });
 
     final result = await _api.getRepositoryReadme(
@@ -645,11 +791,14 @@ class _ReadmeTabState extends State<_ReadmeTab>
       final encoding = (data?['encoding'] as String? ?? 'base64').toLowerCase();
       final text = _decodeReadmeContent(encoded, encoding);
       if (text != null && text.trim().isNotEmpty) {
+        final markdown = _stripHtmlForMarkdown(text);
+        final sections = _splitReadmeSections(markdown);
         setState(() {
           _readmePath = data?['path'] as String? ?? 'README.md';
           _downloadUrl = data?['download_url'] as String? ?? '';
           _htmlUrl = data?['html_url'] as String? ?? '';
-          _markdown = _stripHtmlForMarkdown(text);
+          _markdown = markdown;
+          _readmeSections = sections;
           _loading = false;
           _hasError = false;
         });
@@ -660,6 +809,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
     setState(() {
       _loading = false;
       _hasError = true;
+      _readmeSections = const [];
     });
   }
 
@@ -726,9 +876,30 @@ class _ReadmeTabState extends State<_ReadmeTab>
       },
     );
 
+    // 5.5 Preserve explicit HTML heading ids used by GitHub README tables of
+    // contents. The marker is removed before markdown rendering.
+    s = s.replaceAllMapped(
+      RegExp(
+        r'''<h([1-6])\b([^>]*)>([\s\S]*?)</h\1>''',
+        caseSensitive: false,
+      ),
+      (m) {
+        final attrs = m.group(2) ?? '';
+        final idMatch = RegExp(
+          r'''\bid\s*=\s*(["'])([^"']+)\1''',
+          caseSensitive: false,
+        ).firstMatch(attrs);
+        final id = _unescapeHtmlEntities(idMatch?.group(2) ?? '').trim();
+        final body = m.group(3) ?? '';
+        if (id.isEmpty) return body;
+        return '\n<$_readmeAnchorMarker id="$id" />\n$body\n';
+      },
+    );
+
     // 6. Convert inline formatting HTML → markdown equivalents.
     s = s.replaceAllMapped(
-      RegExp(r'<(b|strong)\b[^>]*?>([\s\S]*?)</(b|strong)>', caseSensitive: false),
+      RegExp(r'<(b|strong)\b[^>]*?>([\s\S]*?)</(b|strong)>',
+          caseSensitive: false),
       (m) => '**${m.group(2)}**',
     );
     s = s.replaceAllMapped(
@@ -736,7 +907,8 @@ class _ReadmeTabState extends State<_ReadmeTab>
       (m) => '_${m.group(2)}_',
     );
     s = s.replaceAllMapped(
-      RegExp(r'<(del|s|strike)\b[^>]*?>([\s\S]*?)</(del|s|strike)>', caseSensitive: false),
+      RegExp(r'<(del|s|strike)\b[^>]*?>([\s\S]*?)</(del|s|strike)>',
+          caseSensitive: false),
       (m) => '~~${m.group(2)}~~',
     );
     s = s.replaceAllMapped(
@@ -789,21 +961,47 @@ class _ReadmeTabState extends State<_ReadmeTab>
       // Match &nbsp; with or without the trailing semicolon (some READMEs omit it).
       .replaceAll(RegExp(r'&nbsp;?'), '\u00a0');
 
-  /// Splits [text] into sections so that markdown table blocks (lines whose
-  /// first non-space character is `|`) can be rendered inside a horizontal
-  /// scroll container, while normal prose/code sections use full width.
-  List<({bool isTable, String content})> _splitByTables(String text) {
-    final sections = <({bool isTable, String content})>[];
+  /// Splits [text] into render sections.
+  ///
+  /// Markdown table blocks (lines whose first non-space character is `|`) get
+  /// their own horizontal scroll container. Headings also start a new section so
+  /// page-local README anchors can scroll to the exact paragraph.
+  List<({bool isTable, String content, GlobalKey? anchorKey})>
+      _splitReadmeSections(String text) {
+    _anchorKeys.clear();
+    final sections = <({bool isTable, String content, GlobalKey? anchorKey})>[];
     final buf = StringBuffer();
     bool inTable = false;
+    GlobalKey? anchorKey;
+    final anchorCounts = <String, int>{};
 
     void flush() {
       final s = buf.toString();
-      if (s.trim().isNotEmpty) sections.add((isTable: inTable, content: s));
+      if (s.trim().isNotEmpty) {
+        sections.add((isTable: inTable, content: s, anchorKey: anchorKey));
+      }
       buf.clear();
+      anchorKey = null;
     }
 
     for (final line in text.split('\n')) {
+      final explicitAnchor = _htmlAnchorId(line);
+      if (explicitAnchor != null) {
+        flush();
+        inTable = false;
+        anchorKey = _registerExplicitAnchor(explicitAnchor);
+        continue;
+      }
+
+      final headingText = _headingText(line);
+      if (headingText != null) {
+        flush();
+        inTable = false;
+        anchorKey = _registerHeadingAnchor(headingText, anchorCounts);
+        buf.writeln(line);
+        continue;
+      }
+
       final tableRow = line.trimLeft().startsWith('|');
       if (tableRow != inTable) {
         flush();
@@ -813,6 +1011,101 @@ class _ReadmeTabState extends State<_ReadmeTab>
     }
     flush();
     return sections;
+  }
+
+  String? _htmlAnchorId(String line) {
+    final match = RegExp(
+      '^<$_readmeAnchorMarker\\s+id="([^"]+)"\\s*/>\$',
+    ).firstMatch(line.trim());
+    return match?.group(1)?.trim();
+  }
+
+  String? _headingText(String line) {
+    final match = RegExp(r'^(#{1,6})[ \t]+(.+?)[ \t#]*$').firstMatch(line);
+    if (match == null) return null;
+    return match.group(2)?.trim();
+  }
+
+  GlobalKey _registerExplicitAnchor(String anchor) {
+    final key = GlobalKey();
+    final normalized = _normalizeAnchor(anchor);
+    _anchorKeys[normalized] = key;
+    _anchorKeys['user-content-$normalized'] = key;
+    return key;
+  }
+
+  GlobalKey _registerHeadingAnchor(
+    String heading,
+    Map<String, int> anchorCounts,
+  ) {
+    final base = _githubAnchorSlugBase(heading);
+    final count = anchorCounts[base] ?? 0;
+    anchorCounts[base] = count + 1;
+
+    final slug = count == 0 ? base : '$base-$count';
+    final key = GlobalKey();
+    _anchorKeys[slug] = key;
+    _anchorKeys['user-content-$slug'] = key;
+
+    final plainBase = _plainAnchorSlugBase(heading);
+    if (plainBase.isNotEmpty && plainBase != base) {
+      final plainSlug = count == 0 ? plainBase : '$plainBase-$count';
+      _anchorKeys.putIfAbsent(plainSlug, () => key);
+      _anchorKeys.putIfAbsent('user-content-$plainSlug', () => key);
+    }
+
+    return key;
+  }
+
+  String _githubAnchorSlugBase(String heading) {
+    final plain = _plainHeadingText(heading).toLowerCase();
+    final buf = StringBuffer();
+    var previousWasSpace = false;
+    final letterOrNumber = RegExp(r'[\p{L}\p{N}]', unicode: true);
+
+    for (final rune in plain.runes) {
+      final char = String.fromCharCode(rune);
+      final isLetterOrNumber = letterOrNumber.hasMatch(char);
+      final isWordPunctuation = char == '-' || char == '_';
+      final isSpace = char.trim().isEmpty;
+
+      if (isSpace) {
+        previousWasSpace = true;
+        continue;
+      }
+      if (isLetterOrNumber || isWordPunctuation) {
+        if (previousWasSpace && buf.isNotEmpty) buf.write('-');
+        buf.write(char);
+        previousWasSpace = false;
+      }
+    }
+
+    final slug = buf.toString().replaceAll(RegExp(r'-+'), '-');
+    return slug.isEmpty ? 'section' : slug;
+  }
+
+  String _plainAnchorSlugBase(String heading) {
+    final plain = _plainHeadingText(heading).toLowerCase().trim();
+    return plain.replaceAll(RegExp(r'\s+'), '-');
+  }
+
+  String _plainHeadingText(String heading) {
+    return _unescapeHtmlEntities(heading)
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAllMapped(
+          RegExp(r'!\[([^\]]*)\]\([^)]+\)'),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAllMapped(
+          RegExp(r'\[([^\]]+)\]\([^)]+\)'),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'[`*_~]'), '')
+        .replaceAllMapped(
+          RegExp(r'\\([\\`*_{}\[\]()#+\-.!])'),
+          (match) => match.group(1) ?? '',
+        )
+        .trim();
   }
 
   String? _decodeReadmeContent(String content, String encoding) {
@@ -845,7 +1138,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
       );
     }
 
-    final sections = _splitByTables(_markdown!);
+    final sections = _readmeSections;
     final normalStyle = _readmeStyleSheet(theme, widget.isDark);
     final tableStyle = normalStyle.copyWith(
       // IntrinsicColumnWidth lets each column expand to its content width so
@@ -864,6 +1157,16 @@ class _ReadmeTabState extends State<_ReadmeTab>
             styleSheet: style,
             onTapLink: (text, href, title) {
               if (href == null || href.isEmpty) return;
+              final tabIndex = _currentRepositoryTabIndex(href);
+              if (tabIndex != null) {
+                widget.onOpenRepositoryTab(tabIndex);
+                return;
+              }
+              final anchor = _currentReadmeAnchor(href);
+              if (anchor != null) {
+                _scrollToAnchor(anchor);
+                return;
+              }
               final resolved = _resolveReadmeUrl(href, forImage: false);
               dispatchLinkAction(context, resolved);
             },
@@ -921,13 +1224,19 @@ class _ReadmeTabState extends State<_ReadmeTab>
             if (section.isTable)
               // Wrap each table in its own horizontal scroll so wide tables
               // don't force text to wrap into unreadably narrow columns.
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: buildMarkdown(section.content, tableStyle),
+              KeyedSubtree(
+                key: section.anchorKey,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: buildMarkdown(section.content, tableStyle),
+                ),
               )
             else
-              buildMarkdown(section.content, normalStyle),
+              KeyedSubtree(
+                key: section.anchorKey,
+                child: buildMarkdown(section.content, normalStyle),
+              ),
         ],
       ),
     );
@@ -938,9 +1247,7 @@ class _ReadmeTabState extends State<_ReadmeTab>
     final fg = isDark ? const Color(0xFFe6edf3) : const Color(0xFF24292f);
     final muted = isDark ? const Color(0xFF8b949e) : const Color(0xFF57606a);
     final border = isDark ? const Color(0xFF30363d) : const Color(0xFFd0d7de);
-    final codeBg = isDark
-        ? const Color(0x666e7681)
-        : const Color(0x33afb8c1);
+    final codeBg = isDark ? const Color(0x666e7681) : const Color(0x33afb8c1);
     final preBg = isDark ? const Color(0xFF161b22) : const Color(0xFFf6f8fa);
     final link = isDark ? const Color(0xFF58a6ff) : const Color(0xFF0969da);
     final body = TextStyle(fontSize: 15, height: 1.6, color: fg);
@@ -950,12 +1257,18 @@ class _ReadmeTabState extends State<_ReadmeTab>
       tableBody: body,
       tableHead: body.copyWith(fontWeight: FontWeight.w600),
       blockquote: body.copyWith(color: muted),
-      h1: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: fg, height: 1.3),
-      h2: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: fg, height: 1.3),
-      h3: TextStyle(fontSize: 19, fontWeight: FontWeight.w600, color: fg, height: 1.35),
-      h4: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: fg, height: 1.4),
-      h5: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: fg, height: 1.4),
-      h6: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: muted, height: 1.4),
+      h1: TextStyle(
+          fontSize: 26, fontWeight: FontWeight.w700, color: fg, height: 1.3),
+      h2: TextStyle(
+          fontSize: 22, fontWeight: FontWeight.w700, color: fg, height: 1.3),
+      h3: TextStyle(
+          fontSize: 19, fontWeight: FontWeight.w600, color: fg, height: 1.35),
+      h4: TextStyle(
+          fontSize: 16, fontWeight: FontWeight.w600, color: fg, height: 1.4),
+      h5: TextStyle(
+          fontSize: 14, fontWeight: FontWeight.w600, color: fg, height: 1.4),
+      h6: TextStyle(
+          fontSize: 13, fontWeight: FontWeight.w600, color: muted, height: 1.4),
       h1Padding: const EdgeInsets.only(top: 16, bottom: 6),
       h2Padding: const EdgeInsets.only(top: 16, bottom: 6),
       h3Padding: const EdgeInsets.only(top: 12, bottom: 4),
@@ -980,7 +1293,8 @@ class _ReadmeTabState extends State<_ReadmeTab>
       ),
       blockquotePadding: const EdgeInsets.only(left: 12),
       tableBorder: TableBorder.all(color: border, width: 1),
-      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      tableCellsPadding:
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       horizontalRuleDecoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: border, width: 1)),
       ),
@@ -1038,6 +1352,132 @@ class _ReadmeTabState extends State<_ReadmeTab>
     }
 
     return 'https://github.com/${widget.owner}/${widget.repo}/blob/${widget.defaultBranch}/$normalized';
+  }
+
+  String? _currentReadmeAnchor(String href) {
+    final trimmed = href.trim();
+    if (trimmed.isEmpty) return null;
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasFragment || uri.fragment.isEmpty) return null;
+
+    if (trimmed.startsWith('#')) return uri.fragment;
+
+    if (uri.hasScheme) {
+      return _isCurrentReadmeGitHubUri(uri) ? uri.fragment : null;
+    }
+
+    if (trimmed.startsWith('//')) return null;
+
+    final baseDir = _readmePath.contains('/')
+        ? _readmePath.substring(0, _readmePath.lastIndexOf('/'))
+        : '';
+    final path = uri.path;
+    if (path.isEmpty) return uri.fragment;
+
+    final joined = path.startsWith('/')
+        ? path.substring(1)
+        : (baseDir.isEmpty ? path : '$baseDir/$path');
+    final normalized = _normalizeRepoPath(joined);
+    return normalized == _normalizeRepoPath(_readmePath) ? uri.fragment : null;
+  }
+
+  int? _currentRepositoryTabIndex(String href) {
+    final uri = Uri.tryParse(href.trim());
+    if (uri == null || uri.hasFragment) return null;
+
+    final pathSegments = _currentRepositoryPathSegments(uri, href);
+    if (pathSegments == null) return null;
+    if (pathSegments.isEmpty) return 0;
+
+    switch (pathSegments.first) {
+      case 'tree':
+        return pathSegments.length <= 2 ? 1 : null;
+      case 'issues':
+        return pathSegments.length == 1 ? 2 : null;
+      case 'pulls':
+        return pathSegments.length == 1 ? 2 : null;
+      case 'commits':
+        return pathSegments.length <= 2 ? 3 : null;
+      case 'releases':
+        return pathSegments.length == 1 ? 4 : null;
+      case 'tags':
+        return pathSegments.length == 1 ? 4 : null;
+      default:
+        return null;
+    }
+  }
+
+  List<String>? _currentRepositoryPathSegments(Uri uri, String href) {
+    final trimmed = href.trim();
+    if (uri.hasScheme) {
+      final host = uri.host.toLowerCase();
+      if (host != 'github.com' && host != 'www.github.com') return null;
+
+      final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+      if (segs.length < 2) return null;
+      if (segs[0].toLowerCase() != widget.owner.toLowerCase() ||
+          segs[1].toLowerCase() != widget.repo.toLowerCase()) {
+        return null;
+      }
+      return segs.sublist(2);
+    }
+
+    if (trimmed.startsWith('//')) return null;
+
+    final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (trimmed.startsWith('/')) {
+      if (segs.length < 2) return null;
+      if (segs[0].toLowerCase() != widget.owner.toLowerCase() ||
+          segs[1].toLowerCase() != widget.repo.toLowerCase()) {
+        return null;
+      }
+      return segs.sublist(2);
+    }
+
+    return segs;
+  }
+
+  bool _isCurrentReadmeGitHubUri(Uri uri) {
+    final host = uri.host.toLowerCase();
+    if (host != 'github.com' && host != 'www.github.com') return false;
+
+    final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segs.length < 2) return false;
+    if (segs[0].toLowerCase() != widget.owner.toLowerCase() ||
+        segs[1].toLowerCase() != widget.repo.toLowerCase()) {
+      return false;
+    }
+
+    if (segs.length == 2) return true;
+    if (segs.length >= 5 && segs[2] == 'blob') {
+      final path = segs.sublist(4).join('/');
+      return _normalizeRepoPath(path) == _normalizeRepoPath(_readmePath);
+    }
+    return false;
+  }
+
+  bool _scrollToAnchor(String anchor) {
+    final key = _anchorKeys[_normalizeAnchor(anchor)];
+    final targetContext = key?.currentContext;
+    if (targetContext == null) return false;
+
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
+    return true;
+  }
+
+  String _normalizeAnchor(String anchor) {
+    final trimmed = anchor.trim().replaceFirst(RegExp(r'^#'), '');
+    try {
+      return Uri.decodeComponent(trimmed).toLowerCase();
+    } catch (_) {
+      return trimmed.toLowerCase();
+    }
   }
 
   String _rawUrlFor(String path) =>
@@ -1181,10 +1621,11 @@ class _CodeTabState extends State<_CodeTab> with AutomaticKeepAliveClientMixin {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     // Find source branch's commit SHA
-    final sourceBranchInfo = widget.branches.cast<Map<String, dynamic>?>().firstWhere(
-      (b) => b != null && b['name'] == sourceRef,
-      orElse: () => null,
-    );
+    final sourceBranchInfo =
+        widget.branches.cast<Map<String, dynamic>?>().firstWhere(
+              (b) => b != null && b['name'] == sourceRef,
+              orElse: () => null,
+            );
     final baseSha = sourceBranchInfo?['commit']?['sha'] as String?;
 
     if (baseSha == null) {
@@ -1576,9 +2017,7 @@ class _IssuesTabState extends State<_IssuesTab>
           List<Map<String, dynamic>>.from(result.data ?? []);
       // Client-side filter: when showing Issues only, exclude PRs
       if (_typeFilter == 'issues') {
-        items = items
-            .where((e) => e['pull_request'] == null)
-            .toList();
+        items = items.where((e) => e['pull_request'] == null).toList();
       }
       setState(() {
         _loading = false;
@@ -1676,8 +2115,8 @@ class _IssuesTabState extends State<_IssuesTab>
                   icon: const Icon(Icons.add, size: 20),
                   tooltip: '创建 Pull Request',
                   padding: const EdgeInsets.symmetric(horizontal: 4),
-                  onPressed: () => context.push(
-                      '/pr/new/${widget.owner}/${widget.repo}'),
+                  onPressed: () =>
+                      context.push('/pr/new/${widget.owner}/${widget.repo}'),
                 ),
               if (_typeFilter == 'issues')
                 IconButton(
@@ -1685,8 +2124,8 @@ class _IssuesTabState extends State<_IssuesTab>
                   tooltip: l10n.createIssue,
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   onPressed: () async {
-                    await context.push(
-                        '/issue/new/${widget.owner}/${widget.repo}');
+                    await context
+                        .push('/issue/new/${widget.owner}/${widget.repo}');
                     if (mounted) _load(refresh: true);
                   },
                 ),
@@ -1738,8 +2177,9 @@ class _IssuesTabState extends State<_IssuesTab>
                                   onTap: () {
                                     final number = _issues[i]['number'] as int?;
                                     if (number != null) {
-                                      final isPr = _issues[i]['pull_request'] != null ||
-                                          _typeFilter == 'pulls';
+                                      final isPr =
+                                          _issues[i]['pull_request'] != null ||
+                                              _typeFilter == 'pulls';
                                       if (isPr) {
                                         context.push(
                                             '/pr/${widget.owner}/${widget.repo}/$number');
@@ -1818,9 +2258,8 @@ class _IssueTypeTab extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: selected
-                        ? cs.onPrimaryContainer
-                        : cs.onSurfaceVariant,
+                    color:
+                        selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -2092,10 +2531,11 @@ class _CommitsTabState extends State<_CommitsTab>
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     // Find source branch's commit SHA
-    final sourceBranchInfo = widget.branches.cast<Map<String, dynamic>?>().firstWhere(
-      (b) => b != null && b['name'] == sourceRef,
-      orElse: () => null,
-    );
+    final sourceBranchInfo =
+        widget.branches.cast<Map<String, dynamic>?>().firstWhere(
+              (b) => b != null && b['name'] == sourceRef,
+              orElse: () => null,
+            );
     final baseSha = sourceBranchInfo?['commit']?['sha'] as String?;
 
     if (baseSha == null) {
@@ -2709,7 +3149,8 @@ class _ReleaseTileState extends State<_ReleaseTile> {
         .replaceAllMapped(RegExp(r'__([^_]+)__'), (m) => m[1]!) // bold __
         .replaceAllMapped(RegExp(r'\*([^*\n]+)\*'), (m) => m[1]!) // italic *
         .replaceAll(RegExp(r'^>\s*', multiLine: true), '') // blockquotes
-        .replaceAll(RegExp(r'^[-*+]\s+', multiLine: true), '') // unordered lists
+        .replaceAll(
+            RegExp(r'^[-*+]\s+', multiLine: true), '') // unordered lists
         .replaceAll(RegExp(r'^\d+\.\s+', multiLine: true), ''); // ordered lists
     final lines = text
         .split('\n')

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../components/dialogs/pat_help_dialog.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../components/policy/policy_dialog.dart';
+import '../../services/app_info_service.dart';
 import '../../services/auth_service.dart';
 import '../../router/app_router.dart';
 import '../../utils/constants.dart';
@@ -299,7 +300,7 @@ class _LoginPageState extends State<LoginPage> {
         ),
         const SizedBox(height: 28),
         Text(
-          'CopoHub',
+          Constants.appName,
           style: Theme.of(context)
               .textTheme
               .displaySmall
@@ -612,16 +613,23 @@ class _LoginPageState extends State<LoginPage> {
           onTap: _showTokenHelp,
         ),
         const SizedBox(height: 10),
-        Text(
-          '${l10n.version} ${Constants.appVersion}',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: cs.outline,
-              ),
+        FutureBuilder<AppInfo>(
+          future: AppInfoService.instance.info,
+          builder: (context, snapshot) {
+            final version = snapshot.data?.version;
+            if (version == null) return const SizedBox(height: 20);
+            return Text(
+              '${l10n.version} $version',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: cs.outline,
+                  ),
+            );
+          },
         ),
         const SizedBox(height: 8),
         Text(
-          '© 2025 CopoHub Team',
+          '© ${DateTime.now().year} ${Constants.appName} Team',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: cs.outline,

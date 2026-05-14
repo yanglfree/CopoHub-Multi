@@ -519,6 +519,8 @@ class _MyRepoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final owner = repo.owner?.login ?? '';
+    final updatedText =
+        _timeAgo(repo.pushedAt.isNotEmpty ? repo.pushedAt : repo.updatedAt);
     return InkWell(
       onTap: () => context.push(
           '/repository/${repo.owner?.login ?? ''}/${repo.name}',
@@ -588,24 +590,38 @@ class _MyRepoTile extends StatelessWidget {
                           ),
                         ),
                       ],
-                      const Spacer(),
-                      Text(
-                        _timeAgo(repo.pushedAt.isNotEmpty
-                            ? repo.pushedAt
-                            : repo.updatedAt),
-                        style:
-                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                      ),
                     ],
                   ),
                 ],
               ),
             ),
-            if (owner.isNotEmpty) ...[
+            if (owner.isNotEmpty || updatedText.isNotEmpty) ...[
               const SizedBox(width: 12),
-              RepositoryActivitySparkline(
-                owner: owner,
-                repo: repo.name,
+              SizedBox(
+                width: 84,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (owner.isNotEmpty)
+                      RepositoryActivitySparkline(
+                        owner: owner,
+                        repo: repo.name,
+                        width: 84,
+                      ),
+                    if (updatedText.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        updatedText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style:
+                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ],

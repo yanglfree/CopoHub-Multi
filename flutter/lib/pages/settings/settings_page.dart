@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../api/github_api_client.dart';
+import '../../services/app_info_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/theme_service.dart';
 import '../../utils/constants.dart';
@@ -74,8 +75,15 @@ class _SettingsPageState extends State<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('版本'),
-            trailing: Text(Constants.appVersion,
-                style: TextStyle(color: cs.onSurfaceVariant)),
+            trailing: FutureBuilder<AppInfo>(
+              future: AppInfoService.instance.info,
+              builder: (context, snapshot) {
+                return Text(
+                  snapshot.data?.version ?? '',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                );
+              },
+            ),
           ),
           const Divider(height: 1, indent: 16),
           ListTile(
@@ -119,7 +127,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _openFeedbackEmail(BuildContext context) async {
-    const version = Constants.appVersion;
+    final version = await AppInfoService.instance.fullVersion;
     final login = AuthService.instance.currentUser?.login ?? 'Unknown';
     final subject = Uri.encodeComponent('CopoHub 用户反馈');
     final body = Uri.encodeComponent(

@@ -87,4 +87,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - pubspec.yaml
     - assets/images/ic_icon.png

@@ -25,7 +25,7 @@ class Constants {
   // ── API ─────────────────────────────────────────────────────────────────────
   static const String apiBaseUrl = 'https://api.github.com';
   static const String apiVersion = '2022-11-28';
-  static const String userAgent = 'CopoHub-Flutter/1.0';
+  static String buildUserAgent(String version) => 'CopoHub-Flutter/$version';
 
   static const String copoHubBaseUrl = 'https://github.fq6825.top';
   static const String dailyBaseUrl = 'https://github.fq6825.top';
@@ -51,7 +51,7 @@ class Constants {
 
   // ── App info ─────────────────────────────────────────────────────────────────
   static const String appName = 'CopoHub';
-  static const String appVersion = '1.4.0';
+  static const String fallbackAppVersion = '0.0.0';
   static const String privacyUrl = 'https://copohub.com/privacy';
   static const String termsUrl = 'https://copohub.com/terms';
 

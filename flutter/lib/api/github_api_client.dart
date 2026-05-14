@@ -5,6 +5,7 @@ import '../models/repository.dart';
 import '../models/repository_participation.dart';
 import '../models/github_org.dart';
 import '../models/pinned_repository.dart';
+import '../services/app_info_service.dart';
 import '../utils/constants.dart';
 import '../utils/api_error_message.dart';
 import 'api_cache.dart';
@@ -51,12 +52,13 @@ class GitHubApiClient {
       headers: {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': Constants.apiVersion,
-        'User-Agent': Constants.userAgent,
+        'User-Agent': Constants.buildUserAgent(Constants.fallbackAppVersion),
       },
     ));
 
     _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
+      onRequest: (options, handler) async {
+        options.headers['User-Agent'] = await AppInfoService.instance.userAgent;
         if (_accessToken.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $_accessToken';
         }
@@ -1442,7 +1444,7 @@ query($login: String!) {
         headers: {
           'Accept': 'application/vnd.github+json',
           'Authorization': 'Bearer $_accessToken',
-          'User-Agent': Constants.userAgent,
+          'User-Agent': await AppInfoService.instance.userAgent,
         },
       )).post<dynamic>('/graphql', data: body);
 
@@ -1700,7 +1702,7 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'User-Agent': Constants.userAgent,
+            'User-Agent': await AppInfoService.instance.userAgent,
           },
         ),
       );

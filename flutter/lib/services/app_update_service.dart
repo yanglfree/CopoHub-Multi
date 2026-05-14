@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../components/dialogs/app_dialog.dart';
+import 'app_info_service.dart';
 import '../utils/constants.dart';
 
 /// App update metadata returned by the update check.
@@ -43,23 +44,21 @@ class AppUpdateService {
   static final instance = AppUpdateService._();
   final Dio _dio;
 
-  // Current version — compared against the server response.
-  static const _currentVersion = Constants.appVersion;
-
   /// Fetches latest version from the server.
   /// Returns update info when a newer version is available, otherwise null.
   Future<AppUpdateInfo?> checkForUpdate() async {
     try {
+      final currentVersion = await AppInfoService.instance.version;
       final response = await _dio.get<dynamic>('/api/v1/app/latest-version');
       final body = response.data as Map<String, dynamic>?;
       if (body == null) return null;
 
       final latest = body['version'] as String? ?? '';
-      if (latest.isEmpty || latest == _currentVersion) return null;
+      if (latest.isEmpty || latest == currentVersion) return null;
 
       return AppUpdateInfo(
         latestVersion: latest,
-        currentVersion: _currentVersion,
+        currentVersion: currentVersion,
         releaseNotes: body['releaseNotes'] as String? ?? '',
         downloadUrl: body['downloadUrl'] as String? ?? '',
       );
