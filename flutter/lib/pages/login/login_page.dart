@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../router/app_router.dart';
 import '../../utils/constants.dart';
 import '../../utils/platform_utils.dart';
+import '../../utils/startup_trace.dart';
 import '../../l10n/app_localizations.dart';
 
 // webview_flutter uses the OpenHarmony-SIG fork which provides ohos support.
@@ -44,17 +45,21 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
+    StartupTrace.log('LoginPage.initState', StartupTrace.windowSummary());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstLaunch());
   }
 
   Future<void> _checkFirstLaunch() async {
+    StartupTrace.log('LoginPage.checkFirstLaunch.start');
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     final accepted = prefs.getBool(Constants.storagePrivacyAccepted) ?? false;
+    StartupTrace.log('LoginPage.checkFirstLaunch.end', 'accepted=$accepted');
     if (!accepted) _showFirstLaunchPolicyDialog();
   }
 
   void _showFirstLaunchPolicyDialog() {
+    StartupTrace.log('LoginPage.showFirstLaunchPolicyDialog');
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -192,6 +197,11 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    StartupTrace.log(
+      'LoginPage.build',
+      '${StartupTrace.windowSummary()} webView=$_showWebView '
+          'token=$_showTokenLogin loading=$_loading',
+    );
     final l10n = AppLocalizations.of(context);
     if (_showWebView && _webViewController != null) {
       return Scaffold(
@@ -218,44 +228,43 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height -
-                  MediaQuery.of(context).padding.top -
-                  MediaQuery.of(context).padding.bottom -
-                  48,
-            ),
-            child: IntrinsicHeight(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 44),
-                  _buildHeader(context),
-                  const Spacer(flex: 2),
-                  if (_loading)
-                    const Center(
-                        child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: CircularProgressIndicator(),
-                    ))
-                  else if (_showTokenLogin)
-                    _buildTokenPanel(context)
-                  else
-                    _buildLoginActions(context),
-                  if (_errorMessage.isNotEmpty) ...[
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final minContentHeight =
+                constraints.maxHeight > 48 ? constraints.maxHeight - 48 : 0.0;
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: minContentHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 44),
+                    _buildHeader(context),
+                    const SizedBox(height: 48),
+                    if (_loading)
+                      const Center(
+                          child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: CircularProgressIndicator(),
+                      ))
+                    else if (_showTokenLogin)
+                      _buildTokenPanel(context)
+                    else
+                      _buildLoginActions(context),
+                    if (_errorMessage.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      _buildError(),
+                    ],
+                    const SizedBox(height: 48),
+                    _buildAgreement(context),
                     const SizedBox(height: 14),
-                    _buildError(),
+                    _buildFooter(context),
                   ],
-                  const Spacer(flex: 2),
-                  _buildAgreement(context),
-                  const SizedBox(height: 14),
-                  _buildFooter(context),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

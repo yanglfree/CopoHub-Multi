@@ -13,6 +13,8 @@
 * limitations under the License.
 */
 
+import common from '@ohos.app.ability.common';
+import { display } from '@kit.ArkUI';
 import { FlutterAbility, FlutterEngine, FlutterManager } from '@ohos/flutter_ohos';
 import { FullScreenListener } from '@ohos/flutter_ohos/src/main/ets/embedding/ohos/FlutterManager';
 import window from '@ohos.window';
@@ -22,6 +24,7 @@ import { IapPlugin } from '../plugins/IapPlugin';
 import { PathProviderPlugin } from '../plugins/PathProviderPlugin';
 import { SharedPreferencesPlugin } from '../plugins/SharedPreferencesPlugin';
 import { SharePlugin } from '../plugins/SharePlugin';
+import { StartupLogger } from '../utils/StartupLogger';
 
 /**
  * A FullScreenListener that safely absorbs errors from setWindowLayoutFullScreen.
@@ -41,8 +44,20 @@ import { SharePlugin } from '../plugins/SharePlugin';
 class SafeFullScreenListener implements FullScreenListener {
   private fullScreen: boolean = true;
   private skipCheck: boolean = false;
+  // Tracks the most recent window status so useFullScreen() can correctly
+  // return false for windowed (FLOATING) mode on 2-in-1 devices.
+  private windowStatus: window.WindowStatusType | null = null;
+
+  // Called before super.onWindowStageCreate so we know the initial window
+  // mode before skipCheck is set to true by setUseFullScreen().
+  applyWindowStatus(status: window.WindowStatusType): void {
+    this.windowStatus = status;
+  }
 
   useFullScreen(): boolean {
+    if (this.isDecoratedWindowMode()) {
+      return false;
+    }
     return this.fullScreen;
   }
 
@@ -55,19 +70,31 @@ class SafeFullScreenListener implements FullScreenListener {
         .getWindowStage(FlutterManager.getInstance().getUIAbility(ctx));
       const win = stage?.getMainWindowSync();
       if (win) {
+        this.applyWindowStatus(win.getWindowStatus());
+        if (useFullScreen && this.isDecoratedWindowMode()) {
+          // In 2-in-1 windowed/maximized mode the system title bar is outside
+          // the drawable area. Forcing layout fullscreen makes ArkUI ignore
+          // that safe area and sizes Flutter to windowRect instead of
+          // drawableRect.
+          return;
+        }
         // setWindowLayoutFullScreen can return void (older SDK) or Promise<void>
         // (newer SDK). Wrap in Promise.resolve so any async rejection is caught.
-        const result = win.setWindowLayoutFullScreen(useFullScreen) as Object;
-        if (result instanceof Promise) {
-          (result as Promise<void>).catch(() => {});
-        }
+        const result = win.setWindowLayoutFullScreen(useFullScreen);
+        Promise.resolve(result).catch((err: Object) => {
+          StartupLogger.warn(`SafeFullScreenListener.setUseFullScreen rejected: ${String(err)}`);
+        });
       }
-    } catch (_) {
+    } catch (err) {
+      StartupLogger.warn(`SafeFullScreenListener.setUseFullScreen failed: ${String(err)}`);
       // Silently ignore: full-screen may be unsupported on this device type.
     }
   }
 
   onScreenStateChanged(data: window.WindowStatusType): void {
+    // Always track the current window status so useFullScreen() stays accurate,
+    // even after skipCheck is set to true by setUseFullScreen().
+    this.windowStatus = data;
     if (this.skipCheck) {
       return;
     }
@@ -83,6 +110,11 @@ class SafeFullScreenListener implements FullScreenListener {
         break;
     }
   }
+
+  private isDecoratedWindowMode(): boolean {
+    return this.windowStatus === window.WindowStatusType.FLOATING ||
+      this.windowStatus === window.WindowStatusType.MAXIMIZE;
+  }
 }
 
 export default class EntryAbility extends FlutterAbility {
@@ -94,12 +126,35 @@ export default class EntryAbility extends FlutterAbility {
   // is never used (see SafeFullScreenListener above).
   private readonly safeFullScreenListener = new SafeFullScreenListener();
 
+  private viewportSyncWindow: window.Window | null = null;
+  private viewportSyncTimerIds: number[] = [];
+  private surfaceAttachmentTimerIds: number[] = [];
+
+  private readonly onWindowSizeChangeSync = (data: window.Size) => {
+    this.syncFlutterViewportToWindow('windowSizeChange', true);
+    this.scheduleDeferredViewportSync('windowSizeChange');
+    this.scheduleSurfaceAttachment('windowSizeChange', true);
+  };
+
+  private readonly onWindowRectChangeSync = (data: window.RectChangeOptions) => {
+    this.syncFlutterViewportToWindow('windowRectChange', true);
+    this.scheduleDeferredViewportSync('windowRectChange');
+    this.scheduleSurfaceAttachment('windowRectChange', true);
+  };
+
+  private readonly onWindowStatusChangeSync = (data: window.WindowStatusType) => {
+    this.safeFullScreenListener.applyWindowStatus(data);
+    this.syncFlutterViewportToWindow(`windowStatusChange.${data}`, true);
+    this.scheduleDeferredViewportSync(`windowStatusChange.${data}`);
+    this.scheduleSurfaceAttachment(`windowStatusChange.${data}`, true);
+  };
+
   // Workaround for a Flutter-OH framework bug on 2-in-1 devices:
   // FlutterAbilityAndEntryDelegate calls handleChangeFocus(true) on ACTIVE
   // but forgets to call handleChangeFocus(false) on INACTIVE. When the window
   // loses IME focus the IME client is detached (error 12800009), but the
-  // text-input handler still sends updateCursor on every frame → main-thread
-  // flood → ANR.
+  // text-input handler still sends updateCursor on every frame, causing a
+  // main-thread flood and eventually ANR.
   private readonly onWindowStageInactiveFix =
     (data: window.WindowStageEventType) => {
       if (data === window.WindowStageEventType.INACTIVE) {
@@ -121,25 +176,217 @@ export default class EntryAbility extends FlutterAbility {
     flutterEngine.getPlugins()?.add(new IapPlugin(this.context))
   }
 
+  provideFlutterEngine(context: common.Context): FlutterEngine | null {
+    const flutterEngine = new FlutterEngine(context, null, null, null);
+    flutterEngine.init(
+      context,
+      this.getFlutterShellArgs().toArray() ?? [],
+      this.shouldRestoreAndSaveState()
+    );
+    return flutterEngine;
+  }
+
+  attachToEngineAutomatically(): boolean {
+    // On 2-in-1 devices the FlutterView is created before ArkUI has created
+    // the native XComponent. Attaching the engine at that point puts the native
+    // side into a preload path that never becomes the visible first frame.
+    // We attach explicitly after XComponent surface creation instead.
+    return false;
+  }
+
   onWindowStageCreate(windowStage: window.WindowStage): void {
+    // Detect the current window status BEFORE installing the listener so that
+    // useFullScreen() already knows whether we're in windowed (FLOATING) mode
+    // when setUseFullScreen is called inside super.onWindowStageCreate.
+    try {
+      const initStatus = windowStage.getMainWindowSync().getWindowStatus();
+      this.safeFullScreenListener.applyWindowStatus(initStatus);
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.onWindowStageCreate.initWindowStatusFailed: ${String(err)}`);
+    }
     // Install the safe listener BEFORE super runs so that when
     // FlutterAbility.onWindowStageCreate calls setUseFullScreen(true) it uses
     // our error-tolerant implementation instead of DefaultFullScreenListener.
     FlutterManager.getInstance().setFullScreenListener(this.safeFullScreenListener);
     super.onWindowStageCreate(windowStage);
+    this.syncFlutterViewportToWindow('afterSuper');
     try {
       windowStage.on('windowStageEvent', this.onWindowStageInactiveFix);
     } catch (err) {
+      StartupLogger.warn(`EntryAbility.onWindowStageCreate.windowStageEventListenerFailed: ${String(err)}`);
       // Non-fatal: best-effort workaround only.
+    }
+    this.registerViewportSyncListeners(windowStage);
+    try {
+      this.context.eventHub.on('flutterPageAppear', () => {
+        this.syncFlutterViewportToWindow('flutterPageAppear', true);
+        this.scheduleDeferredViewportSync('flutterPageAppear');
+      });
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.onWindowStageCreate.flutterPageAppearListenerFailed: ${String(err)}`);
+    }
+    try {
+      this.context.eventHub.on('flutterSurfaceCreated', (viewId: string) => {
+        this.scheduleSurfaceAttachment(`flutterSurfaceCreated.${viewId}`);
+      });
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.onWindowStageCreate.flutterSurfaceCreatedListenerFailed: ${String(err)}`);
     }
   }
 
   onWindowStageWillDestroy(windowStage: window.WindowStage): void {
+    this.clearDeferredViewportSync();
+    this.clearSurfaceAttachment();
+    this.unregisterViewportSyncListeners();
+    try {
+      this.context.eventHub.off('flutterPageAppear');
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.onWindowStageWillDestroy.flutterPageAppearListenerRemoveFailed: ${String(err)}`);
+    }
+    try {
+      this.context.eventHub.off('flutterSurfaceCreated');
+    } catch (err) {
+      StartupLogger.warn(
+        `EntryAbility.onWindowStageWillDestroy.flutterSurfaceCreatedListenerRemoveFailed: ${String(err)}`
+      );
+    }
     try {
       windowStage.off('windowStageEvent', this.onWindowStageInactiveFix);
     } catch (err) {
+      StartupLogger.warn(`EntryAbility.onWindowStageWillDestroy.windowStageEventListenerRemoveFailed: ${String(err)}`);
       // Ignore
     }
     super.onWindowStageWillDestroy(windowStage);
+  }
+
+  private registerViewportSyncListeners(windowStage: window.WindowStage): void {
+    try {
+      const mainWindow = windowStage.getMainWindowSync();
+      this.viewportSyncWindow = mainWindow;
+      mainWindow.on('windowSizeChange', this.onWindowSizeChangeSync);
+      mainWindow.on('windowRectChange', this.onWindowRectChangeSync);
+      mainWindow.on('windowStatusChange', this.onWindowStatusChangeSync);
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.viewportSync.listenersRegisterFailed: ${String(err)}`);
+    }
+  }
+
+  private unregisterViewportSyncListeners(): void {
+    try {
+      this.viewportSyncWindow?.off('windowSizeChange', this.onWindowSizeChangeSync);
+      this.viewportSyncWindow?.off('windowRectChange', this.onWindowRectChangeSync);
+      this.viewportSyncWindow?.off('windowStatusChange', this.onWindowStatusChangeSync);
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.viewportSync.listenersRemoveFailed: ${String(err)}`);
+    }
+    this.viewportSyncWindow = null;
+  }
+
+  private scheduleDeferredViewportSync(reason: string): void {
+    this.clearDeferredViewportSync();
+    [0, 32, 100, 260, 900].forEach((delay: number) => {
+      const timerId = setTimeout(() => {
+        this.viewportSyncTimerIds = this.viewportSyncTimerIds.filter((id: number) => id !== timerId);
+        this.syncFlutterViewportToWindow(`${reason}.deferred${delay}`, true);
+      }, delay);
+      this.viewportSyncTimerIds.push(timerId);
+    });
+  }
+
+  private clearDeferredViewportSync(): void {
+    this.viewportSyncTimerIds.forEach((timerId: number) => {
+      clearTimeout(timerId);
+    });
+    this.viewportSyncTimerIds = [];
+  }
+
+  private scheduleSurfaceAttachment(reason: string, force: boolean = false): void {
+    this.clearSurfaceAttachment();
+    [0, 32, 120, 260, 900].forEach((delay: number) => {
+      const timerId = setTimeout(() => {
+        this.surfaceAttachmentTimerIds = this.surfaceAttachmentTimerIds.filter((id: number) => id !== timerId);
+        this.retryFlutterViewAttachment(`${reason}.deferred${delay}`, force);
+      }, delay);
+      this.surfaceAttachmentTimerIds.push(timerId);
+    });
+  }
+
+  private clearSurfaceAttachment(): void {
+    this.surfaceAttachmentTimerIds.forEach((timerId: number) => {
+      clearTimeout(timerId);
+    });
+    this.surfaceAttachmentTimerIds = [];
+  }
+
+  private retryFlutterViewAttachment(reason: string, force: boolean = false): void {
+    try {
+      const flutterView = this.getFlutterView();
+      if (flutterView === null || this.storedEngine === null) {
+        return;
+      }
+      if (!force && flutterView.hasRenderedFirstFrame()) {
+        return;
+      }
+      if (!flutterView.isAttachedToFlutterEngine()) {
+        flutterView.attachToFlutterEngine(this.storedEngine);
+      } else {
+        flutterView.ensureSurfaceAttached();
+      }
+      flutterView.onSurfaceCreated();
+      this.syncFlutterViewportToWindow(`attachmentRetry.${reason}`, true);
+      this.storedEngine.processPendingMessages();
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.attachmentRetry.${reason}.failed: ${String(err)}`);
+    }
+  }
+
+  private syncFlutterViewportToWindow(reason: string, callPreDraw: boolean = false): void {
+    try {
+      const flutterView = this.getFlutterView();
+      if (flutterView === null) {
+        return;
+      }
+      const properties = this.viewportSyncWindow?.getWindowProperties()
+        ?? FlutterManager.getInstance()
+          .getWindowStage(FlutterManager.getInstance().getUIAbility(this.context))
+          .getMainWindowSync()
+          .getWindowProperties();
+      const rect = this.preferredViewportRect(properties);
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+      const densityPixels = this.preferredDevicePixelRatio();
+      StartupLogger.warn(
+        `EntryAbility.viewportSync.${reason} rect=${rect.width}x${rect.height} density=${densityPixels}`
+      );
+      flutterView.ensureSurfaceAttached();
+      if (callPreDraw) {
+        // preDraw corrects the native frame buffer dimensions that
+        // attachToFlutterEngine initialised with the full-display size
+        // (updateSize(displayInfo.width, displayInfo.height), e.g. 3120x2080).
+        flutterView.preDraw(rect.width, rect.height);
+      }
+      flutterView.updateNativeSurfaceMetrics(rect.width, rect.height, densityPixels);
+      flutterView.onAreaChange(null);
+      this.storedEngine?.processPendingMessages();
+    } catch (err) {
+      StartupLogger.warn(`EntryAbility.viewportSync.${reason}.failed: ${String(err)}`);
+    }
+  }
+
+  private preferredViewportRect(properties: window.WindowProperties): window.Rect {
+    const drawableRect = properties.drawableRect;
+    if (drawableRect.width > 0 && drawableRect.height > 0) {
+      return drawableRect;
+    }
+    return properties.windowRect;
+  }
+
+  private preferredDevicePixelRatio(): number {
+    const status = this.viewportSyncWindow?.getWindowStatus();
+    if (status === window.WindowStatusType.FLOATING || status === window.WindowStatusType.MAXIMIZE) {
+      return 1.0;
+    }
+    return display.getDefaultDisplaySync().densityPixels;
   }
 }

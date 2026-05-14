@@ -14,6 +14,32 @@
 */
 
 import { appTasks } from '@ohos/hvigor-ohos-plugin';
+import fs from 'fs';
+import path from 'path';
+import childProcess from 'child_process';
+
+function applyFlutterOhosPatches(): void {
+    const projectDir = process.cwd();
+    const flutterOhosDir = path.join(projectDir, 'oh_modules', '@ohos', 'flutter_ohos');
+    const flutterViewFile = path.join(flutterOhosDir, 'src', 'main', 'ets', 'view', 'FlutterView.ets');
+    const patchFile = path.join(projectDir, 'patches', 'flutter_ohos_2in1_surface_lifecycle.patch');
+
+    if (!fs.existsSync(flutterViewFile) || !fs.existsSync(patchFile)) {
+        return;
+    }
+
+    const flutterViewSource = fs.readFileSync(flutterViewFile, 'utf8');
+    if (flutterViewSource.includes('ensureSurfaceAttached(): void')) {
+        return;
+    }
+
+    childProcess.execFileSync('patch', ['-p1', '-i', patchFile], {
+        cwd: flutterOhosDir,
+        stdio: 'inherit'
+    });
+}
+
+applyFlutterOhosPatches();
 
 export default {
     system: appTasks,  /* Built-in plugin of Hvigor. It cannot be modified. */

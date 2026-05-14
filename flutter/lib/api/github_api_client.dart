@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../models/user.dart';
 import '../models/user_status.dart';
 import '../models/repository.dart';
+import '../models/repository_participation.dart';
 import '../models/github_org.dart';
 import '../models/pinned_repository.dart';
 import '../utils/constants.dart';
@@ -709,6 +710,85 @@ query($login: String!) {
         ttl: const Duration(minutes: 1),
         forceRefresh: forceRefresh,
       );
+
+  Future<ApiResponse<RepositoryParticipation>> getRepositoryParticipation(
+    String owner,
+    String repo, {
+    bool forceRefresh = false,
+  }) async {
+    final path = '/repos/$owner/$repo/stats/participation';
+    final cacheKey = ApiCache.keyFor('GET', path);
+    const ttl = Duration(hours: 6);
+
+    if (!forceRefresh) {
+      final cached = ApiCache.instance.get(cacheKey);
+      if (cached != null && cached.isFreshFor(ttl)) {
+        return ApiResponse.ok(_parseRepositoryParticipation(cached.body));
+      }
+    }
+
+    final cachedForEtag = forceRefresh ? null : ApiCache.instance.get(cacheKey);
+    try {
+      final response = await _dio.get<dynamic>(
+        path,
+        options: cachedForEtag?.etag != null
+            ? Options(headers: {'If-None-Match': cachedForEtag!.etag})
+            : null,
+      );
+
+      if (response.statusCode == 304 && cachedForEtag != null) {
+        await ApiCache.instance.touch(cacheKey);
+        return ApiResponse.ok(
+          _parseRepositoryParticipation(cachedForEtag.body),
+        );
+      }
+
+      if (response.statusCode == 202 || response.statusCode == 204) {
+        return ApiResponse.ok(
+          cachedForEtag != null
+              ? _parseRepositoryParticipation(cachedForEtag.body)
+              : RepositoryParticipation.empty,
+        );
+      }
+
+      final body = response.data;
+      if (body is! Map) {
+        return ApiResponse.ok(RepositoryParticipation.empty);
+      }
+      final normalizedBody = body is Map<String, dynamic>
+          ? body
+          : body.map((key, value) => MapEntry('$key', value));
+
+      final newEtag =
+          response.headers.value('etag') ?? response.headers.value('ETag');
+      await ApiCache.instance.put(
+        cacheKey,
+        CachedEntry(
+          etag: newEtag,
+          body: normalizedBody,
+          fetchedAt: DateTime.now(),
+        ),
+      );
+      return ApiResponse.ok(RepositoryParticipation.fromJson(normalizedBody));
+    } on DioException catch (e) {
+      if ({404, 409, 422}.contains(e.response?.statusCode)) {
+        return ApiResponse.ok(RepositoryParticipation.empty);
+      }
+      return _handleDioError(e);
+    }
+  }
+
+  RepositoryParticipation _parseRepositoryParticipation(dynamic body) {
+    if (body is Map<String, dynamic>) {
+      return RepositoryParticipation.fromJson(body);
+    }
+    if (body is Map) {
+      return RepositoryParticipation.fromJson(
+        body.map((key, value) => MapEntry('$key', value)),
+      );
+    }
+    return RepositoryParticipation.empty;
+  }
 
   Future<ApiResponse<Repository>> createRepository(
           Map<String, dynamic> repoData) =>

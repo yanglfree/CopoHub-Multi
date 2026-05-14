@@ -23,11 +23,49 @@ const EVENT_BACK_PRESS = 'EVENT_BACK_PRESS'
 @Component
 struct Index {
   @LocalStorageLink('viewId') viewId: string = "";
+  @State baseWidth: number = 0;
+  @State baseHeight: number = 0;
+  @State scaleX: number = 1;
+  @State scaleY: number = 1;
 
   build() {
-    Column() {
-      FlutterPage({ viewId: this.viewId })
+    Stack({ alignContent: Alignment.TopStart }) {
+      FlutterPage({
+        viewId: this.viewId,
+        xComponentRenderFit: RenderFit.TOP_LEFT,
+        enableFrameCacheForSmooth: false
+      })
+        .width(this.baseWidth > 0 ? this.baseWidth : '100%')
+        .height(this.baseHeight > 0 ? this.baseHeight : '100%')
+        .scale({
+          x: this.scaleX,
+          y: this.scaleY,
+          centerX: '0vp',
+          centerY: '0vp'
+        })
+        .onAppear(() => {
+          // The 2-in-1 window can be measured before its drawable rect is
+          // available. Let EntryAbility push the final viewport into Flutter
+          // after the ArkUI page is visible.
+          const ctx = getContext(this) as common.UIAbilityContext;
+          ctx.eventHub.emit('flutterPageAppear');
+        })
     }
+    .width('100%')
+    .height('100%')
+    .onAreaChange((_oldArea: Area, newArea: Area) => {
+      const width = Number(newArea.width);
+      const height = Number(newArea.height);
+      if (width <= 0 || height <= 0) {
+        return;
+      }
+      if (this.baseWidth <= 0 || this.baseHeight <= 0) {
+        this.baseWidth = width;
+        this.baseHeight = height;
+      }
+      this.scaleX = width / this.baseWidth;
+      this.scaleY = height / this.baseHeight;
+    })
   }
 
   onBackPress(): boolean {

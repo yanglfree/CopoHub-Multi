@@ -1,0 +1,144 @@
+--- a/src/main/ets/embedding/ohos/FlutterAbility.ets	2026-05-14 08:58:21
++++ flutter/ohos/oh_modules/@ohos/flutter_ohos/src/main/ets/embedding/ohos/FlutterAbility.ets	2026-05-14 08:34:27
+@@ -81,9 +81,12 @@
+     this?.delegate?.platformPlugin?.setUIAbilityContext(this.context);
+     this?.delegate?.onRestoreInstanceState(want);
+ 
+-    if (this.stillAttachedForEvent("onWindowStageCreate")) {
+-      this?.delegate?.onWindowStageCreate();
+-    }
++    // CopoHub 2-in-1 workaround:
++    // Run Dart from onCreate, but keep EntryAbility.attachToEngineAutomatically()
++    // disabled so the engine is not attached to XComponent before the ArkUI
++    // surface exists. Starting Dart after surface creation can block runApp()
++    // in Flutter-OH on 2-in-1 windowed mode.
++    this?.delegate?.onWindowStageCreate();
+ 
+     Log.i(TAG, 'MyAbility onCreate');
+ 
+--- a/src/main/ets/embedding/ohos/FlutterPage.ets	2026-05-14 08:58:21
++++ flutter/ohos/oh_modules/@ohos/flutter_ohos/src/main/ets/embedding/ohos/FlutterPage.ets	2026-05-14 08:34:27
+@@ -14,6 +14,7 @@
+ */
+ 
+ import Log from '../../util/Log';
++import common from '@ohos.app.ability.common';
+ import { FlutterView } from '../../view/FlutterView';
+ import FlutterManager from './FlutterManager';
+ import { DVModel, DVModelChildren, DynamicView } from '../../view/DynamicView/dynamicView';
+@@ -69,6 +70,7 @@
+         .focusable(true)
+         .onLoad((context) => {
+           this.flutterView?.onSurfaceCreated()
++          this.emitSurfaceCreatedEvent()
+           Log.d(TAG, "XComponent onLoad ");
+         })
+         .onDestroy(() => {
+@@ -136,6 +138,7 @@
+         .focusable(true)
+         .onLoad((context) => {
+           this.flutterView?.onSurfaceCreated()
++          this.emitSurfaceCreatedEvent()
+           Log.d(TAG, "XComponent onLoad ");
+         })
+         .onDestroy(() => {
+@@ -234,6 +237,16 @@
+     this.rootDvModel = this.flutterView!!.getDVModel().children
+   }
+ 
++  private emitSurfaceCreatedEvent(): void {
++    try {
++      const context = getContext(this) as common.UIAbilityContext;
++      context.eventHub.emit('flutterSurfaceCreated', this.viewId);
++      Log.d(TAG, `XComponent surface created event: ${this.viewId}`);
++    } catch (err) {
++      Log.w(TAG, `XComponent surface created event failed: ${String(err)}`);
++    }
++  }
++
+   aboutToDisappear() {
+     this.flutterView?.removeFirstFrameListener(this);
+     this.flutterView?.removeFirstPreloadFrameListener(this)
+--- a/src/main/ets/view/FlutterView.ets	2026-05-14 08:58:21
++++ flutter/ohos/oh_modules/@ohos/flutter_ohos/src/main/ets/view/FlutterView.ets	2026-05-14 08:58:02
+@@ -441,9 +441,25 @@
+         height = this.displayInfo!.height;
+       }
+       this.flutterEngine?.getFlutterNapi().xComponentPreDraw(this.id, width, height);
++      this.syncFirstFrameState('preDraw');
+     }
+   }
+ 
++  updateNativeSurfaceMetrics(width: number, height: number, densityPixels: number): void {
++    if (!this.isAttachedToFlutterEngine()) {
++      return;
++    }
++    this.flutterEngine?.getFlutterNapi()?.updateSize(width, height);
++    this.flutterEngine?.getFlutterNapi()?.updateDensity(densityPixels);
++    this.flutterEngine?.getTextInputChannel()?.setDevicePixelRatio(densityPixels);
++    this.viewportMetrics.devicePixelRatio = densityPixels;
++    this.viewportMetrics.physicalWidth = width;
++    this.viewportMetrics.physicalHeight = height;
++    this.viewportMetrics.physicalTouchSlop = 1.0 * densityPixels;
++    this.needSetViewport = true;
++    this.updateViewportMetrics();
++  }
++
+   detachFromFlutterEngine(): void {
+     Log.i(TAG, "detachFromFlutterEngine");
+     if (!this.isAttachedToFlutterEngine()) {
+@@ -477,9 +493,19 @@
+ 
+   onSurfaceCreated() {
+     this.isSurfaceAvailableForRendering = true;
++    this.ensureSurfaceAttached();
+     this.flutterEngine?.processPendingMessages();
++    this.syncFirstFrameState('onSurfaceCreated');
+   }
+ 
++  ensureSurfaceAttached(): void {
++    if (this.isAttachedToFlutterEngine()) {
++      Log.d(TAG, "ensureSurfaceAttached");
++      this.flutterEngine?.getFlutterNapi().xComponentAttachFlutterEngine(this.id);
++      this.syncFirstFrameState('ensureSurfaceAttached');
++    }
++  }
++
+   onSurfaceDestroyed() {
+     this.isSurfaceAvailableForRendering = false;
+     if (this.isAttachedToFlutterEngine()) {
+@@ -649,6 +675,7 @@
+   }
+ 
+   hasRenderedFirstFrame(): boolean {
++    this.syncFirstFrameState('hasRenderedFirstFrame');
+     return this.isFlutterUiDisplayed;
+   }
+ 
+@@ -666,6 +693,26 @@
+     }
+   }
+ 
++  private syncFirstFrameState(reason: string): void {
++    if (!this.isAttachedToFlutterEngine()) {
++      return;
++    }
++    const flutterNapi = this.flutterEngine?.getFlutterNapi();
++    if (flutterNapi === undefined || flutterNapi === null) {
++      return;
++    }
++    if (!this.isFlutterUiPreload && flutterNapi.isPreloadedFlutterUi) {
++      this.isFlutterUiPreload = true;
++      Log.i(TAG, `syncFirstFrameState preload from native, reason=${reason}`);
++      this.onFirstFrame(1);
++    }
++    if (!this.isFlutterUiDisplayed && flutterNapi.isDisplayingFlutterUi) {
++      this.isFlutterUiDisplayed = true;
++      Log.i(TAG, `syncFirstFrameState first frame from native, reason=${reason}`);
++      this.onFirstFrame();
++    }
++  }
++
+   setCheckFullScreen(check: boolean) {
+     this.checkFullScreen = check;
+   }

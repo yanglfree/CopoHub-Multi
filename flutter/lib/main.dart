@@ -12,33 +12,48 @@ import 'services/theme_service.dart';
 import 'theme/app_theme.dart';
 import 'providers/theme_provider.dart';
 import 'router/app_router.dart';
+import 'utils/startup_trace.dart';
 
 void main() async {
+  StartupTrace.log('main.start');
   WidgetsFlutterBinding.ensureInitialized();
+  StartupTrace.log('widgetsBinding.ensureInitialized.end');
   try {
+    StartupTrace.log('ApiCache.init.start');
     // 8-second timeout guards against Hive/file-system hangs on some
     // HarmonyOS 2-in-1 devices where openBox can block indefinitely.
     await ApiCache.init().timeout(const Duration(seconds: 8), onTimeout: () {
-      debugPrint('ApiCache.init timed out (non-fatal)');
+      StartupTrace.log('ApiCache.init.timeout', 'limit=8s');
     });
+    StartupTrace.log('ApiCache.init.end');
   } catch (e) {
-    debugPrint('ApiCache.init failed (non-fatal): $e');
+    StartupTrace.logError('ApiCache.init.failed', e);
   }
   try {
+    StartupTrace.log('ProMemberService.initialize.start');
     await ProMemberService.instance
         .initialize()
         .timeout(const Duration(seconds: 8), onTimeout: () {
-      debugPrint('ProMemberService.initialize timed out (non-fatal)');
+      StartupTrace.log('ProMemberService.initialize.timeout', 'limit=8s');
     });
+    StartupTrace.log('ProMemberService.initialize.end');
   } catch (e) {
-    debugPrint('ProMemberService.initialize failed (non-fatal): $e');
+    StartupTrace.logError('ProMemberService.initialize.failed', e);
   }
   // AuthService & ThemeService auto-initialize in their constructors.
+  StartupTrace.log('AuthService.instance.start');
   AuthService.instance;
+  StartupTrace.log('AuthService.instance.end');
+  StartupTrace.log('ThemeService.instance.start');
   ThemeService.instance;
+  StartupTrace.log('ThemeService.instance.end');
   // Reset clipboard de-dup on each launch (mirrors HarmonyOS EntryAbility).
+  StartupTrace.log('ClipboardDetectorService.resetDuplicateCheck.start');
   ClipboardDetectorService.instance.resetDuplicateCheck();
+  StartupTrace.log('ClipboardDetectorService.resetDuplicateCheck.end');
+  StartupTrace.log('runApp.before');
   runApp(const ProviderScope(child: CopoHubApp()));
+  StartupTrace.log('runApp.after');
 }
 
 class CopoHubApp extends ConsumerStatefulWidget {
@@ -53,10 +68,13 @@ class _CopoHubAppState extends ConsumerState<CopoHubApp>
   @override
   void initState() {
     super.initState();
+    StartupTrace.log('CopoHubApp.initState');
     WidgetsBinding.instance.addObserver(this);
     // Delay update check and initial clipboard detection until after first
     // frame so the router is ready and the user has landed on the home screen.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      StartupTrace.log('CopoHubApp.firstPostFrame');
+      StartupTrace.dumpHistory('firstPostFrame');
       AppUpdateService.instance.checkAndShowDialogIfNeeded(context);
       _detectClipboard();
     });
@@ -64,6 +82,7 @@ class _CopoHubAppState extends ConsumerState<CopoHubApp>
 
   @override
   void dispose() {
+    StartupTrace.log('CopoHubApp.dispose');
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -72,27 +91,42 @@ class _CopoHubAppState extends ConsumerState<CopoHubApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    StartupTrace.log('CopoHubApp.didChangeAppLifecycleState', 'state=$state');
+    StartupTrace.dumpHistory('lifecycle.$state');
     if (state == AppLifecycleState.resumed) {
       _detectClipboard();
     }
+  }
+
+  @override
+  void didChangeMetrics() {
+    StartupTrace.log(
+        'CopoHubApp.didChangeMetrics', StartupTrace.windowSummary());
   }
 
   Future<void> _detectClipboard() async {
     // Only detect clipboard after the user has logged in, to avoid triggering
     // the HarmonyOS clipboard-access permission dialog before the user has
     // agreed to the privacy policy.
-    if (!AuthService.instance.isLoggedIn) return;
+    if (!AuthService.instance.isLoggedIn) {
+      return;
+    }
 
     final result = await ClipboardDetectorService.instance.detect();
-    if (result == null) return;
+    if (result == null) {
+      return;
+    }
 
     final navContext = rootNavigatorKey.currentContext;
-    if (navContext == null || !navContext.mounted) return;
+    if (navContext == null || !navContext.mounted) {
+      return;
+    }
 
     _showClipboardDialog(navContext, result);
   }
 
-  void _showClipboardDialog(BuildContext context, ClipboardDetectionResult result) {
+  void _showClipboardDialog(
+      BuildContext context, ClipboardDetectionResult result) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AppDialog(
@@ -132,6 +166,8 @@ class _CopoHubAppState extends ConsumerState<CopoHubApp>
 
   @override
   Widget build(BuildContext context) {
+    StartupTrace.logOnce('CopoHubApp.firstBuild', 'CopoHubApp.firstBuild',
+        StartupTrace.windowSummary());
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
 

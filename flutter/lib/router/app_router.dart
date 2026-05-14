@@ -33,6 +33,7 @@ import '../pages/commit/diff_file_detail_page.dart';
 import '../pages/file_viewer/file_viewer_page.dart';
 import '../pages/featured/featured_page.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/startup_trace.dart';
 
 // ── Route names ───────────────────────────────────────────────────────────────
 
@@ -134,7 +135,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.login,
-        builder: (_, __) => const LoginPage(),
+        builder: (_, __) {
+          StartupTrace.log('Router.build.login', StartupTrace.windowSummary());
+          return const LoginPage();
+        },
       ),
 
       // ── Dashboard shell (4 tabs) ─────────────────────────────────────────────
@@ -299,7 +303,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             if (item == null) {
               return Scaffold(
                   body: Center(
-                      child: Text(AppLocalizations.of(context).missingRepoInfo)));
+                      child:
+                          Text(AppLocalizations.of(context).missingRepoInfo)));
             }
             return CuratedDetailPage(item: item);
           }),

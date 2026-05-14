@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../services/auth_service.dart';
 import '../../router/app_router.dart';
+import '../../utils/startup_trace.dart';
 
 const _appIconAsset = 'assets/images/ic_icon.png';
 
@@ -50,6 +51,7 @@ class _SplashPageState extends State<SplashPage>
 
   void _waitForAuth() {
     final auth = AuthService.instance;
+    StartupTrace.log('SplashPage.waitForAuth', 'authState=${auth.authState}');
     if (auth.authState != AuthState.initializing) {
       _navigateAfterDelay(auth.isLoggedIn);
       return;
@@ -57,6 +59,7 @@ class _SplashPageState extends State<SplashPage>
     void listener() {
       if (auth.authState != AuthState.initializing) {
         auth.removeListener(listener);
+        StartupTrace.log('SplashPage.authResolved', 'authState=${auth.authState}');
         if (mounted) _navigateAfterDelay(auth.isLoggedIn);
       }
     }
@@ -65,9 +68,12 @@ class _SplashPageState extends State<SplashPage>
   }
 
   void _navigateAfterDelay(bool loggedIn) {
+    StartupTrace.log('SplashPage.navigateAfterDelay', 'loggedIn=$loggedIn');
     Future.delayed(const Duration(milliseconds: 1800), () {
       if (!mounted) return;
-      context.go(loggedIn ? AppRoutes.dashboard : AppRoutes.login);
+      final dest = loggedIn ? AppRoutes.dashboard : AppRoutes.login;
+      StartupTrace.log('SplashPage.navigate', 'to=$dest');
+      context.go(dest);
     });
   }
 

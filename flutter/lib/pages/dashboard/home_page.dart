@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
 import '../../components/repository/repo_context_menu.dart';
+import '../../components/repository/repository_activity_sparkline.dart';
 import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../models/repository.dart';
 import '../../models/user.dart';
@@ -517,6 +518,7 @@ class _MyRepoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final owner = repo.owner?.login ?? '';
     return InkWell(
       onTap: () => context.push(
           '/repository/${repo.owner?.login ?? ''}/${repo.name}',
@@ -524,66 +526,88 @@ class _MyRepoTile extends StatelessWidget {
       onLongPress: () => showRepoContextMenu(context, repo),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    repo.name,
-                    style: TextStyle(
-                      color: cs.primary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          repo.name,
+                          style: TextStyle(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (repo.private)
+                        Icon(Icons.lock_outline,
+                            size: 16, color: cs.onSurfaceVariant),
+                    ],
                   ),
-                ),
-                if (repo.private)
-                  Icon(Icons.lock_outline,
-                      size: 16, color: cs.onSurfaceVariant),
-              ],
+                  if (repo.description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      repo.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (repo.language.isNotEmpty) ...[
+                        Container(
+                          width: 11,
+                          height: 11,
+                          decoration: BoxDecoration(
+                            color: Color(int.tryParse(
+                                    Constants.getLanguageColor(repo.language)
+                                        .replaceFirst('#', '0xFF')) ??
+                                0xFF8b949e),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            repo.language,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12, color: cs.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      Text(
+                        _timeAgo(repo.pushedAt.isNotEmpty
+                            ? repo.pushedAt
+                            : repo.updatedAt),
+                        style:
+                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            if (repo.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                repo.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+            if (owner.isNotEmpty) ...[
+              const SizedBox(width: 12),
+              RepositoryActivitySparkline(
+                owner: owner,
+                repo: repo.name,
               ),
             ],
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                if (repo.language.isNotEmpty) ...[
-                  Container(
-                    width: 11,
-                    height: 11,
-                    decoration: BoxDecoration(
-                      color: Color(int.tryParse(
-                              Constants.getLanguageColor(repo.language)
-                                  .replaceFirst('#', '0xFF')) ??
-                          0xFF8b949e),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(repo.language,
-                      style:
-                          TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                ],
-                const Spacer(),
-                Text(
-                  _timeAgo(repo.pushedAt.isNotEmpty
-                      ? repo.pushedAt
-                      : repo.updatedAt),
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-              ],
-            ),
           ],
         ),
       ),

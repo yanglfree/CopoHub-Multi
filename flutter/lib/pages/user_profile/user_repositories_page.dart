@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../api/github_api_client.dart';
 import '../../components/repository/repo_context_menu.dart';
+import '../../components/repository/repository_activity_sparkline.dart';
 import '../../models/repository.dart';
 import '../../services/auth_service.dart';
 import '../../utils/constants.dart';
@@ -17,6 +18,7 @@ import '../../utils/constants.dart';
 class UserRepositoriesPage extends StatefulWidget {
   const UserRepositoriesPage({
     super.key,
+
     /// When null, fetches the authenticated user's repos (including private).
     this.username,
   });
@@ -177,8 +179,7 @@ class _UserRepositoriesPageState extends State<UserRepositoriesPage> {
             // Repository list
             SliverList.builder(
               itemCount: _filtered.length,
-              itemBuilder: (context, i) =>
-                  _RepoTile(repo: _filtered[i]),
+              itemBuilder: (context, i) => _RepoTile(repo: _filtered[i]),
             ),
 
             // Footer: loading indicator or "no more"
@@ -237,8 +238,7 @@ class _LanguageFilterBar extends StatelessWidget {
             onTap: () => onSelect(lang),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               decoration: BoxDecoration(
                 color: isSelected ? cs.primary : cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
@@ -271,91 +271,116 @@ class _RepoTile extends StatelessWidget {
     final langColor = repo.language.isNotEmpty
         ? _hexToColor(Constants.getLanguageColor(repo.language))
         : null;
+    final owner = repo.owner?.login ?? '';
 
     return InkWell(
-      onTap: () => context
-          .push('/repository/${repo.owner?.login ?? ''}/${repo.name}'),
+      onTap: () =>
+          context.push('/repository/${repo.owner?.login ?? ''}/${repo.name}'),
       onLongPress: () => showRepoContextMenu(context, repo),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Repo name + private badge
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    repo.name,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary,
-                    ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Repo name + private badge
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          repo.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary,
+                          ),
+                        ),
+                      ),
+                      if (repo.private)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: cs.outlineVariant),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('Private',
+                              style: TextStyle(
+                                  fontSize: 10, color: cs.onSurfaceVariant)),
+                        ),
+                    ],
                   ),
-                ),
-                if (repo.private)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: cs.outlineVariant),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text('Private',
-                        style: TextStyle(
-                            fontSize: 10, color: cs.onSurfaceVariant)),
-                  ),
-              ],
-            ),
 
-            // Description
-            if (repo.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                repo.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12, color: cs.onSurfaceVariant, height: 1.4),
+                  // Description
+                  if (repo.description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      repo.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurfaceVariant,
+                          height: 1.4),
+                    ),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // Stats row
+                  Row(
+                    children: [
+                      if (repo.language.isNotEmpty) ...[
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: langColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            repo.language,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12, color: cs.onSurfaceVariant),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      Icon(Icons.star_border,
+                          size: 14, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 2),
+                      Text('${repo.stargazersCount}',
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant)),
+                      const SizedBox(width: 12),
+                      Icon(Icons.call_split,
+                          size: 14, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 2),
+                      Text('${repo.forksCount}',
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (owner.isNotEmpty) ...[
+              const SizedBox(width: 12),
+              RepositoryActivitySparkline(
+                owner: owner,
+                repo: repo.name,
               ),
             ],
-
-            const SizedBox(height: 8),
-
-            // Stats row
-            Row(
-              children: [
-                if (repo.language.isNotEmpty) ...[
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: langColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(repo.language,
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
-                  const SizedBox(width: 12),
-                ],
-                Icon(Icons.star_border,
-                    size: 14, color: cs.onSurfaceVariant),
-                const SizedBox(width: 2),
-                Text('${repo.stargazersCount}',
-                    style: TextStyle(
-                        fontSize: 12, color: cs.onSurfaceVariant)),
-                const SizedBox(width: 12),
-                Icon(Icons.call_split,
-                    size: 14, color: cs.onSurfaceVariant),
-                const SizedBox(width: 2),
-                Text('${repo.forksCount}',
-                    style: TextStyle(
-                        fontSize: 12, color: cs.onSurfaceVariant)),
-              ],
-            ),
           ],
         ),
       ),
