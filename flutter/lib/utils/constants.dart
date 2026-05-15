@@ -52,8 +52,8 @@ class Constants {
   // ── App info ─────────────────────────────────────────────────────────────────
   static const String appName = 'CopoHub';
   static const String fallbackAppVersion = '0.0.0';
-  static const String privacyUrl = 'https://copohub.com/privacy';
-  static const String termsUrl = 'https://copohub.com/terms';
+  static const String privacyUrl = 'https://copohub.youdroid.top/privacy';
+  static const String termsUrl = 'https://copohub.youdroid.top/terms';
 
   // ── Language colors ──────────────────────────────────────────────────────────
   static const Map<String, String> languageColors = {

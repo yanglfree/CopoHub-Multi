@@ -12,7 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import 'daily_report_view.dart';
 
 const _kCardWidth = 375.0;
-const _kQrUrl = 'https://copohub.com';
+const _kQrUrl = 'https://copohub.youdroid.top';
 const _kSlogan = '每天发现更多精彩仓库，尽在 CopoHub';
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -268,7 +268,10 @@ class DailyReportShareCard extends StatelessWidget {
                   const SizedBox(height: 8),
                   ...sections.sections.take(4).toList().asMap().entries.map(
                         (e) => _CardSectionRow(
-                            index: e.key + 1, title: e.value.title),
+                          index: e.key + 1,
+                          title: e.value.title,
+                          summary: _plainText(e.value.markdown),
+                        ),
                       ),
                   const SizedBox(height: 14),
                 ],
@@ -533,15 +536,24 @@ class _CardRepoRow extends StatelessWidget {
 }
 
 class _CardSectionRow extends StatelessWidget {
-  const _CardSectionRow({required this.index, required this.title});
+  const _CardSectionRow({
+    required this.index,
+    required this.title,
+    this.summary = '',
+  });
 
   final int index;
   final String title;
+  final String summary;
 
   @override
   Widget build(BuildContext context) {
+    final trimmedSummary = summary.length > 60
+        ? '${summary.substring(0, 60)}…'
+        : summary;
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -564,16 +576,35 @@ class _CardSectionRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF24292F),
-                fontWeight: FontWeight.w600,
-                height: 1.4,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF24292F),
+                    fontWeight: FontWeight.w700,
+                    height: 1.4,
+                  ),
+                ),
+                if (trimmedSummary.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    trimmedSummary,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF57606A),
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
