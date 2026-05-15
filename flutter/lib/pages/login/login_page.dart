@@ -38,6 +38,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _showTokenLogin = false;
   bool _handlingCallback = false;
   bool _agreementAccepted = false;
+  bool _firstLaunchPolicyDialogShown = false;
   bool _tokenObscured = true;
   final _tokenController = TextEditingController();
   WebViewController? _webViewController;
@@ -56,7 +57,11 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
     final accepted = prefs.getBool(Constants.storagePrivacyAccepted) ?? false;
     StartupTrace.log('LoginPage.checkFirstLaunch.end', 'accepted=$accepted');
-    if (!accepted) _showFirstLaunchPolicyDialog();
+    setState(() => _agreementAccepted = accepted);
+    if (!accepted && !_firstLaunchPolicyDialogShown) {
+      _firstLaunchPolicyDialogShown = true;
+      _showFirstLaunchPolicyDialog();
+    }
   }
 
   void _showFirstLaunchPolicyDialog() {
@@ -66,14 +71,18 @@ class _LoginPageState extends State<LoginPage> {
       barrierDismissible: false,
       builder: (_) => PolicyDialog(
         showActions: true,
-        onAccept: () async {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool(Constants.storagePrivacyAccepted, true);
-          if (mounted) setState(() => _agreementAccepted = true);
-        },
+        onAccept: () => _setAgreementAccepted(true),
         onDecline: () => exit(0),
       ),
     );
+  }
+
+  Future<void> _setAgreementAccepted(bool accepted) async {
+    if (accepted) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(Constants.storagePrivacyAccepted, true);
+    }
+    if (mounted) setState(() => _agreementAccepted = accepted);
   }
 
   @override
@@ -563,8 +572,7 @@ class _LoginPageState extends State<LoginPage> {
       children: [
         Checkbox(
           value: _agreementAccepted,
-          onChanged: (value) =>
-              setState(() => _agreementAccepted = value ?? false),
+          onChanged: (value) => _setAgreementAccepted(value ?? false),
           visualDensity: VisualDensity.compact,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),

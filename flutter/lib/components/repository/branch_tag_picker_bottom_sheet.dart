@@ -76,12 +76,12 @@ class _BranchTagPickerBottomSheetState
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(l10n.sourceBranch,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
           const Divider(height: 1),
           Flexible(
             child: ListView.builder(
-              shrinkWrap: true,
               itemCount: widget.branches.length,
               itemBuilder: (context, i) {
                 final name = widget.branches[i]['name'] as String? ?? '';
@@ -246,9 +246,10 @@ class _BranchTagPickerBottomSheetState
                                   width: double.infinity,
                                   child: FilledButton.icon(
                                     icon: const Icon(Icons.add, size: 18),
-                                    label: Text('${l10n.createBranch}: $_query'),
-                                    onPressed: () => Navigator.pop(
-                                        context, (_query, _selectedSourceRef, true)),
+                                    label:
+                                        Text('${l10n.createBranch}: $_query'),
+                                    onPressed: () => Navigator.pop(context,
+                                        (_query, _selectedSourceRef, true)),
                                   ),
                                 ),
                               ],
@@ -299,7 +300,8 @@ class _BranchTagPickerBottomSheetState
                         trailing: selected
                             ? const Icon(Icons.check, color: Colors.green)
                             : null,
-                        onTap: () => Navigator.pop(context, (name, name, false)),
+                        onTap: () =>
+                            Navigator.pop(context, (name, name, false)),
                       );
                     },
                   ),

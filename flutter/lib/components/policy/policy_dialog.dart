@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../dialogs/app_dialog.dart';
 import '../../l10n/app_localizations.dart';
@@ -15,8 +16,8 @@ class PolicyDialog extends StatefulWidget {
   });
 
   final PolicyTab initialTab;
-  final VoidCallback? onAccept;
-  final VoidCallback? onDecline;
+  final FutureOr<void> Function()? onAccept;
+  final FutureOr<void> Function()? onDecline;
 
   /// When [showActions] is true, shows Accept / Decline buttons (used in
   /// first-launch flow). Otherwise shows only a "Close" button.
@@ -48,17 +49,17 @@ class _PolicyDialogState extends State<PolicyDialog> {
           ? [
               AppDialogAction(
                 label: l10n.decline,
-                onPressed: () {
-                  widget.onDecline?.call();
-                  Navigator.of(context).pop();
+                onPressed: () async {
+                  await widget.onDecline?.call();
+                  if (context.mounted) Navigator.of(context).pop();
                 },
               ),
               AppDialogAction(
                 label: l10n.accept,
                 isPrimary: true,
-                onPressed: () {
-                  widget.onAccept?.call();
-                  Navigator.of(context).pop();
+                onPressed: () async {
+                  await widget.onAccept?.call();
+                  if (context.mounted) Navigator.of(context).pop();
                 },
               ),
             ]

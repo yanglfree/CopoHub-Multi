@@ -331,6 +331,7 @@ Contact Email: youdroid2048@gmail.com''';
   String get home => _zh ? '首页' : 'Home';
   String get myRepositories => _zh ? '我的仓库' : 'My Repositories';
   String get starredRepositories => _zh ? 'Star 仓库' : 'Starred Repositories';
+  String get myPullRequests => _zh ? 'PR' : 'PR';
   String get allRepositories => _zh ? '全部仓库' : 'All repositories';
   String get filter => _zh ? '筛选' : 'Filter';
   String get filterRepositories => _zh ? '筛选仓库' : 'Filter repositories';
@@ -428,7 +429,12 @@ Contact Email: youdroid2048@gmail.com''';
   String get filterClosed => _zh ? '已关闭' : 'Closed';
 
   // ── Pull Request ──────────────────────────────────────────────────────────
-  String get noPullRequests => _zh ? '暂无 Pull Requests' : 'No Pull Requests';
+  String get noPullRequests => _zh ? '暂无 PR' : 'No PRs';
+  String get createdByMe => _zh ? '我创建的' : 'Created by me';
+  String get reviewRequested => _zh ? '待我审阅' : 'Review requested';
+  String get involvedByMe => _zh ? '我参与的' : 'Involved';
+  String get searchResultsIncomplete =>
+      _zh ? 'GitHub 搜索结果可能不完整' : 'GitHub search results may be incomplete';
   String get submitReview => _zh ? '提交审阅' : 'Submit review';
   String get submitReviewFailed =>
       _zh ? '提交审阅失败，请稍后重试' : 'Failed to submit review. Please try again later.';

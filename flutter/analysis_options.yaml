@@ -9,6 +9,16 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # This app vendors a patched webview_flutter_wkwebview package. Its
+    # example and package tests need their own dev dependencies, so app-level
+    # analysis excludes them and validates app-owned code separately.
+    - packages/webview_flutter/webview_flutter_wkwebview/example/**
+    - packages/webview_flutter/webview_flutter_wkwebview/test/**
+    - packages/webview_flutter/webview_flutter_wkwebview/pigeons/**
+    - packages/webview_flutter/webview_flutter_wkwebview/pubspec.yaml
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

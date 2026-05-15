@@ -14,7 +14,7 @@ class DiffFileDetailPage extends StatefulWidget {
   });
 
   final String filename;
-  final String status;   // 'added' | 'removed' | 'modified' | 'renamed'
+  final String status; // 'added' | 'removed' | 'modified' | 'renamed'
   final int additions;
   final int deletions;
   final String? patch;
@@ -44,8 +44,7 @@ class _DiffFileDetailPageState extends State<DiffFileDetailPage> {
 
     for (final line in lines) {
       if (line.startsWith('@@')) {
-        final m =
-            RegExp(r'@@ -(\d+),?\d* \+(\d+),?\d* @@').firstMatch(line);
+        final m = RegExp(r'@@ -(\d+),?\d* \+(\d+),?\d* @@').firstMatch(line);
         if (m != null) {
           oldLine = int.parse(m.group(1)!) - 1;
           newLine = int.parse(m.group(2)!) - 1;
@@ -220,8 +219,7 @@ class _DiffFileDetailPageState extends State<DiffFileDetailPage> {
                   Icon(Icons.description_outlined,
                       size: 48, color: cs.onSurfaceVariant),
                   const SizedBox(height: 12),
-                  Text('无差异内容',
-                      style: TextStyle(color: cs.onSurfaceVariant)),
+                  Text('无差异内容', style: TextStyle(color: cs.onSurfaceVariant)),
                 ],
               ),
             )
@@ -239,8 +237,7 @@ class _DiffView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor =
-        isDark ? const Color(0xFF0d1117) : const Color(0xFFf6f8fa);
+    final bgColor = isDark ? const Color(0xFF0d1117) : const Color(0xFFf6f8fa);
     final screenWidth = MediaQuery.of(context).size.width;
     // Estimate content width: line-num col ~88px + ~7.5px per char + 24px padding
     final maxChars = lines.fold<int>(
@@ -275,17 +272,11 @@ class _DiffLineWidget extends StatelessWidget {
   Color _bg() {
     switch (line.type) {
       case _DLT.addition:
-        return isDark
-            ? const Color(0xFF1a4d2e)
-            : const Color(0xFFe6ffec);
+        return isDark ? const Color(0xFF1a4d2e) : const Color(0xFFe6ffec);
       case _DLT.deletion:
-        return isDark
-            ? const Color(0xFF4d1a1e)
-            : const Color(0xFFffebe9);
+        return isDark ? const Color(0xFF4d1a1e) : const Color(0xFFffebe9);
       case _DLT.header:
-        return isDark
-            ? const Color(0xFF1a2d4d)
-            : const Color(0xFFddf4ff);
+        return isDark ? const Color(0xFF1a2d4d) : const Color(0xFFddf4ff);
       case _DLT.context:
         return Colors.transparent;
     }
@@ -294,21 +285,13 @@ class _DiffLineWidget extends StatelessWidget {
   Color _fg() {
     switch (line.type) {
       case _DLT.addition:
-        return isDark
-            ? const Color(0xFF56d364)
-            : const Color(0xFF1a7f37);
+        return isDark ? const Color(0xFF56d364) : const Color(0xFF1a7f37);
       case _DLT.deletion:
-        return isDark
-            ? const Color(0xFFf85149)
-            : const Color(0xFFcf222e);
+        return isDark ? const Color(0xFFf85149) : const Color(0xFFcf222e);
       case _DLT.header:
-        return isDark
-            ? const Color(0xFF79c0ff)
-            : const Color(0xFF0969da);
+        return isDark ? const Color(0xFF79c0ff) : const Color(0xFF0969da);
       case _DLT.context:
-        return isDark
-            ? const Color(0xFFe6edf3)
-            : const Color(0xFF24292f);
+        return isDark ? const Color(0xFFe6edf3) : const Color(0xFF24292f);
     }
   }
 
@@ -327,69 +310,66 @@ class _DiffLineWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final lineNumColor =
         isDark ? const Color(0xFF6e7681) : const Color(0xFF6e7781);
-    final numBg =
-        isDark ? const Color(0xFF161b22) : const Color(0xFFf0f2f5);
+    final numBg = isDark ? const Color(0xFF161b22) : const Color(0xFFf0f2f5);
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Line numbers column ──────────────────────────────────────────
-          Container(
-            color: numBg,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 34,
-                  child: Text(
-                    line.oldLineNumber?.toString() ?? '',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color: lineNumColor,
-                    ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Line numbers column ──────────────────────────────────────────
+        Container(
+          color: numBg,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 34,
+                child: Text(
+                  line.oldLineNumber?.toString() ?? '',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: lineNumColor,
+                    height: 1.5,
                   ),
                 ),
-                const SizedBox(width: 6),
-                SizedBox(
-                  width: 34,
-                  child: Text(
-                    line.newLineNumber?.toString() ?? '',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color: lineNumColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // ── Diff content column ──────────────────────────────────────────
-          Expanded(
-            child: Container(
-              color: _bg(),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: Text(
-                '${_prefix()}${line.content}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  color: _fg(),
-                  height: 1.5,
-                ),
-                softWrap: false,
               ),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 34,
+                child: Text(
+                  line.newLineNumber?.toString() ?? '',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: lineNumColor,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // ── Diff content column ──────────────────────────────────────────
+        Expanded(
+          child: Container(
+            color: _bg(),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: Text(
+              '${_prefix()}${line.content}',
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'monospace',
+                color: _fg(),
+                height: 1.5,
+              ),
+              softWrap: false,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

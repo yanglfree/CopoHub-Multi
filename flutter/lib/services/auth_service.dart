@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api/github_api_client.dart';
 import '../models/user.dart';
+import 'pro_member_service.dart';
 import '../utils/constants.dart';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -94,6 +95,7 @@ class AuthService extends ChangeNotifier {
         _currentUser =
             GithubUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
         _api.setAccessToken(_accessToken);
+        await ProMemberService.instance.useAccount(_currentUser!.login);
         _setState(AuthState.loggedIn, user: _currentUser);
       } catch (e) {
         debugPrint('Restore auth state failed: $e');
@@ -196,6 +198,7 @@ class AuthService extends ChangeNotifier {
     final user = userResult.data!;
     _currentUser = user;
     await _saveAuthInfo(token, user);
+    await ProMemberService.instance.useAccount(user.login);
     _setState(AuthState.loggedIn, user: user);
     return AuthResult.ok(user);
   }
@@ -252,6 +255,7 @@ class AuthService extends ChangeNotifier {
     _api.setAccessToken('');
     await _api.clearAllCaches();
     await _clearAuthInfo();
+    await ProMemberService.instance.useAccount(null);
     _setState(AuthState.loggedOut);
   }
 }

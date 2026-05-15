@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:highlight/highlight.dart' show highlight, Node;
@@ -7,6 +8,7 @@ import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import '../../api/github_api_client.dart';
 import '../../components/dialogs/app_dialog.dart';
+import '../../providers/api_provider.dart';
 
 // Extension → highlight.js language name mapping
 const _extLang = <String, String>{
@@ -84,7 +86,7 @@ List<_Seg> _flattenNodes(
   return out;
 }
 
-class FileViewerPage extends StatefulWidget {
+class FileViewerPage extends ConsumerStatefulWidget {
   const FileViewerPage({
     super.key,
     required this.owner,
@@ -100,11 +102,11 @@ class FileViewerPage extends StatefulWidget {
   final String? fileName;
 
   @override
-  State<FileViewerPage> createState() => _FileViewerPageState();
+  ConsumerState<FileViewerPage> createState() => _FileViewerPageState();
 }
 
-class _FileViewerPageState extends State<FileViewerPage> {
-  final _api = GitHubApiClient.instance;
+class _FileViewerPageState extends ConsumerState<FileViewerPage> {
+  GitHubApiClient get _api => ref.read(githubApiClientProvider);
 
   String _content = '';
   bool _loading = true;
@@ -128,11 +130,17 @@ class _FileViewerPageState extends State<FileViewerPage> {
   final _vertScrollController = ScrollController();
 
   static const _imageSuffixes = [
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.webp',
+    '.svg',
+    '.bmp',
+    '.ico',
   ];
 
-  String get _displayName =>
-      widget.fileName ?? widget.path.split('/').last;
+  String get _displayName => widget.fileName ?? widget.path.split('/').last;
 
   String get _ext => _displayName.contains('.')
       ? '.${_displayName.split('.').last.toLowerCase()}'
@@ -243,14 +251,11 @@ class _FileViewerPageState extends State<FileViewerPage> {
   }
 
   void _scrollToMatch(int index) {
-    if (_matchOffsets.isEmpty ||
-        index < 0 ||
-        index >= _matchOffsets.length) {
+    if (_matchOffsets.isEmpty || index < 0 || index >= _matchOffsets.length) {
       return;
     }
     final offset = _matchOffsets[index];
-    final linesAbove =
-        '\n'.allMatches(_content.substring(0, offset)).length;
+    final linesAbove = '\n'.allMatches(_content.substring(0, offset)).length;
     const lineHeight = 13.0 * 1.5;
     const topPadding = 8.0;
     final target = topPadding + linesAbove * lineHeight;
@@ -317,7 +322,11 @@ class _FileViewerPageState extends State<FileViewerPage> {
   }
 
   bool get _hasTextContent =>
-      !_loading && _error.isEmpty && !_isImage && !_isTooLarge && _content.isNotEmpty;
+      !_loading &&
+      _error.isEmpty &&
+      !_isImage &&
+      !_isTooLarge &&
+      _content.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -348,9 +357,8 @@ class _FileViewerPageState extends State<FileViewerPage> {
                         '${widget.owner}/${widget.repo}',
                         style: TextStyle(
                             fontSize: 11,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant),
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -378,11 +386,17 @@ class _FileViewerPageState extends State<FileViewerPage> {
                         onSelected: (v) {
                           switch (v) {
                             case 'jump':
-                              { _showJumpToLineDialog(); }
+                              {
+                                _showJumpToLineDialog();
+                              }
                             case 'wrap':
-                              { setState(() => _softWrap = !_softWrap); }
+                              {
+                                setState(() => _softWrap = !_softWrap);
+                              }
                             case 'download':
-                              { _downloadFile(); }
+                              {
+                                _downloadFile();
+                              }
                             case 'copy':
                               {
                                 Clipboard.setData(
@@ -484,8 +498,7 @@ class _FileViewerPageState extends State<FileViewerPage> {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error.isNotEmpty) return _ErrorRetry(message: _error, onRetry: _load);
     if (_isTooLarge) {
-      return _TooLargeView(
-          fileSize: _fileSize, onDownload: _downloadFile);
+      return _TooLargeView(fileSize: _fileSize, onDownload: _downloadFile);
     }
     if (_isImage) return _ImageView(url: _imageUrl, name: _displayName);
     return _CodeView(
@@ -592,8 +605,7 @@ class _JumpToLineDialogState extends State<_JumpToLineDialog> {
   void _submit() {
     final value = int.tryParse(_controller.text.trim());
     if (value == null || value < 1 || value > widget.totalLines) {
-      setState(
-          () => _errorText = '请输入 1 ~ ${widget.totalLines} 之间的行号');
+      setState(() => _errorText = '请输入 1 ~ ${widget.totalLines} 之间的行号');
       return;
     }
     Navigator.of(context).pop();
@@ -683,6 +695,9 @@ class _CodeView extends StatefulWidget {
 }
 
 class _CodeViewState extends State<_CodeView> {
+  static const _lineViewCharThreshold = 80 * 1024;
+  static const _lineViewLineThreshold = 2000;
+
   // Cached parsed nodes from highlight (language-specific, theme-independent)
   List<Node>? _parsedNodes;
   bool _parseFailed = false;
@@ -691,7 +706,49 @@ class _CodeViewState extends State<_CodeView> {
   List<_Seg>? _cachedSegs;
   bool? _cachedIsDark;
 
+  // Cached line data used by the large-file renderer.
+  String? _cachedLineContent;
+  List<String>? _cachedLines;
+  List<int>? _cachedLineStarts;
+
   String? get _lang => _extLang[widget.ext];
+
+  @override
+  void didUpdateWidget(covariant _CodeView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.content != widget.content || oldWidget.ext != widget.ext) {
+      _parsedNodes = null;
+      _parseFailed = false;
+      _cachedSegs = null;
+      _cachedIsDark = null;
+      _cachedLineContent = null;
+      _cachedLines = null;
+      _cachedLineStarts = null;
+    }
+  }
+
+  void _ensureLines() {
+    if (_cachedLineContent == widget.content) return;
+    final lines = widget.content.split('\n');
+    final starts = <int>[];
+    var offset = 0;
+    for (final line in lines) {
+      starts.add(offset);
+      offset += line.length + 1;
+    }
+    _cachedLineContent = widget.content;
+    _cachedLines = lines;
+    _cachedLineStarts = starts;
+  }
+
+  int get _lineCount {
+    _ensureLines();
+    return _cachedLines!.length;
+  }
+
+  bool get _shouldUseLineView =>
+      widget.content.length > _lineViewCharThreshold ||
+      _lineCount > _lineViewLineThreshold;
 
   List<_Seg> _getSegs(bool isDark) {
     final lang = _lang;
@@ -784,6 +841,138 @@ class _CodeViewState extends State<_CodeView> {
     return spans;
   }
 
+  List<TextSpan> _applyPlainSearch(
+    String line,
+    int lineStart,
+    TextStyle baseStyle,
+  ) {
+    final offsets = widget.matchOffsets;
+    final qlen = widget.searchQuery.length;
+    if (offsets.isEmpty || qlen == 0 || line.isEmpty) {
+      return [TextSpan(text: line, style: baseStyle)];
+    }
+
+    final lineEnd = lineStart + line.length;
+    final breakpoints = <int>{lineStart, lineEnd};
+    var hasOverlap = false;
+    for (final ms in offsets) {
+      final me = ms + qlen;
+      if (ms < lineEnd && me > lineStart) {
+        hasOverlap = true;
+        breakpoints.add(ms.clamp(lineStart, lineEnd));
+        breakpoints.add(me.clamp(lineStart, lineEnd));
+      }
+    }
+
+    if (!hasOverlap) return [TextSpan(text: line, style: baseStyle)];
+
+    final spans = <TextSpan>[];
+    final sorted = breakpoints.toList()..sort();
+    for (var i = 0; i < sorted.length - 1; i++) {
+      final from = sorted[i];
+      final to = sorted[i + 1];
+      if (from >= to) continue;
+
+      var style = baseStyle;
+      for (var matchIndex = 0; matchIndex < offsets.length; matchIndex++) {
+        final ms = offsets[matchIndex];
+        final me = ms + qlen;
+        if (ms <= from && me >= to) {
+          style = baseStyle.copyWith(
+            backgroundColor: matchIndex == widget.currentMatchIndex
+                ? const Color(0xFFFF8C00).withAlpha(220)
+                : const Color(0xFFFFEB3B).withAlpha(180),
+            color: Colors.black87,
+          );
+          break;
+        }
+      }
+
+      spans.add(TextSpan(
+        text: line.substring(from - lineStart, to - lineStart),
+        style: style,
+      ));
+    }
+    return spans;
+  }
+
+  Widget _buildLineView({
+    required BuildContext context,
+    required bool isDark,
+    required Color bgColor,
+    required TextStyle baseStyle,
+  }) {
+    _ensureLines();
+    final lines = _cachedLines!;
+    final starts = _cachedLineStarts!;
+    final lineNumberColor =
+        isDark ? const Color(0xFF6e7681) : const Color(0xFF6e7781);
+    final lineNumberBg =
+        isDark ? const Color(0xFF161b22) : const Color(0xFFf0f2f5);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxChars = lines.fold<int>(
+      0,
+      (max, line) => line.length > max ? line.length : max,
+    );
+    final estimatedWidth =
+        (72.0 + maxChars * 7.8 + 24.0).clamp(screenWidth, double.infinity);
+
+    final list = ListView.builder(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: lines.length,
+      itemBuilder: (context, index) {
+        final line = lines[index];
+        final spans = _applyPlainSearch(line, starts[index], baseStyle);
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!widget.softWrap)
+              Container(
+                width: 58,
+                color: lineNumberBg,
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: Text(
+                  '${index + 1}',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    height: 1.5,
+                    color: lineNumberColor,
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                child: SelectableText.rich(
+                  TextSpan(children: spans),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    final scrollable = widget.softWrap
+        ? list
+        : SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: estimatedWidth, child: list),
+          );
+
+    return Container(
+      color: bgColor,
+      child: Scrollbar(
+        controller: widget.scrollController,
+        thumbVisibility: true,
+        child: scrollable,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -799,7 +988,7 @@ class _CodeViewState extends State<_CodeView> {
             (isDark ? const Color(0xFFabb2bf) : const Color(0xFF333333)))
         : Theme.of(context).colorScheme.onSurface;
 
-    final lineCount = widget.content.split('\n').length;
+    final lineCount = _lineCount;
 
     final baseStyle = TextStyle(
       fontFamily: 'monospace',
@@ -807,6 +996,15 @@ class _CodeViewState extends State<_CodeView> {
       height: 1.5,
       color: fgColor,
     );
+
+    if (_shouldUseLineView) {
+      return _buildLineView(
+        context: context,
+        isDark: isDark,
+        bgColor: bgColor,
+        baseStyle: baseStyle,
+      );
+    }
 
     Widget textWidget;
     if (hasLang) {
@@ -862,8 +1060,7 @@ class _LineNumbers extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fgColor =
-        isDark ? const Color(0xFF6e7681) : const Color(0xFF6e7781);
+    final fgColor = isDark ? const Color(0xFF6e7681) : const Color(0xFF6e7781);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(

@@ -12,6 +12,8 @@ class ProMemberService extends ChangeNotifier {
   bool _isPro = false;
   ProPlanType _planType = ProPlanType.none;
   int _expiryTimestamp = 0;
+  String _accountKey = '';
+  SharedPreferences? _prefs;
 
   bool get isPro => _isPro;
   ProPlanType get planType => _planType;
@@ -23,20 +25,32 @@ class ProMemberService extends ChangeNotifier {
     if (_planType == ProPlanType.lifetime || _expiryTimestamp == 0) {
       return '永久有效';
     }
-    final dt =
-        DateTime.fromMillisecondsSinceEpoch(_expiryTimestamp).toLocal();
+    final dt = DateTime.fromMillisecondsSinceEpoch(_expiryTimestamp).toLocal();
     return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} 到期';
   }
 
   Future<void> initialize() async {
-    final prefs = await SharedPreferences.getInstance();
-    _isPro = prefs.getBool('${Constants.storageAccessToken}_is_pro') ?? false;
-    final planStr =
-        prefs.getString('${Constants.storageAccessToken}_plan') ?? '';
-    _planType = _planFromString(planStr);
-    _expiryTimestamp =
-        prefs.getInt('${Constants.storageAccessToken}_expiry') ?? 0;
-    _validateExpiry();
+    _prefs = await SharedPreferences.getInstance();
+    _resetInMemory();
+  }
+
+  Future<void> useAccount(String? login) async {
+    _prefs ??= await SharedPreferences.getInstance();
+    final nextAccountKey = _normalizeAccountKey(login);
+    if (_accountKey == nextAccountKey && nextAccountKey.isNotEmpty) return;
+
+    _accountKey = nextAccountKey;
+    if (_accountKey.isEmpty) {
+      _resetInMemory();
+      notifyListeners();
+      return;
+    }
+
+    _isPro = _prefs?.getBool(_key('is_pro')) ?? false;
+    _planType = _planFromString(_prefs?.getString(_key('plan')) ?? '');
+    _expiryTimestamp = _prefs?.getInt(_key('expiry')) ?? 0;
+    await _validateExpiry();
+    notifyListeners();
   }
 
   Future<void> setPro({
@@ -44,15 +58,15 @@ class ProMemberService extends ChangeNotifier {
     ProPlanType planType = ProPlanType.none,
     int expiryTimestamp = 0,
   }) async {
+    _prefs ??= await SharedPreferences.getInstance();
     _isPro = isPro;
     _planType = planType;
     _expiryTimestamp = expiryTimestamp;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('${Constants.storageAccessToken}_is_pro', isPro);
-    await prefs.setString(
-        '${Constants.storageAccessToken}_plan', planType.name);
-    await prefs.setInt(
-        '${Constants.storageAccessToken}_expiry', expiryTimestamp);
+    if (_accountKey.isNotEmpty) {
+      await _prefs?.setBool(_key('is_pro'), isPro);
+      await _prefs?.setString(_key('plan'), planType.name);
+      await _prefs?.setInt(_key('expiry'), expiryTimestamp);
+    }
     notifyListeners();
   }
 
@@ -60,17 +74,37 @@ class ProMemberService extends ChangeNotifier {
     await setPro(isPro: false);
   }
 
-  void _validateExpiry() {
+  Future<void> _validateExpiry() async {
     if (_isPro &&
         _expiryTimestamp > 0 &&
         DateTime.now().millisecondsSinceEpoch > _expiryTimestamp) {
       _isPro = false;
       _planType = ProPlanType.none;
+      _expiryTimestamp = 0;
+      if (_accountKey.isNotEmpty) {
+        await _prefs?.setBool(_key('is_pro'), false);
+        await _prefs?.setString(_key('plan'), ProPlanType.none.name);
+        await _prefs?.setInt(_key('expiry'), 0);
+      }
     }
   }
 
+  void _resetInMemory() {
+    _isPro = false;
+    _planType = ProPlanType.none;
+    _expiryTimestamp = 0;
+  }
+
+  String _normalizeAccountKey(String? login) =>
+      (login ?? '').trim().toLowerCase();
+
+  String _key(String suffix) {
+    final encodedAccount = Uri.encodeComponent(_accountKey);
+    return '${Constants.storageAccessToken}_${encodedAccount}_pro_$suffix';
+  }
+
   ProPlanType _planFromString(String s) {
-    return ProPlanType.values.firstWhere((e) => e.name == s,
-        orElse: () => ProPlanType.none);
+    return ProPlanType.values
+        .firstWhere((e) => e.name == s, orElse: () => ProPlanType.none);
   }
 }

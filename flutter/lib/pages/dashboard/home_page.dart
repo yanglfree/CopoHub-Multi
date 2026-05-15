@@ -6,6 +6,7 @@ import '../../components/repository/repo_context_menu.dart';
 import '../../components/repository/repository_activity_sparkline.dart';
 import '../../components/skeleton/repo_list_skeleton.dart';
 import '../../l10n/app_localizations.dart';
+import '../../models/pull_request_search.dart';
 import '../../models/repository.dart';
 import '../../models/user.dart';
 import '../../services/auth_service.dart';
@@ -27,7 +28,7 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -73,6 +74,7 @@ class _HomePageState extends State<HomePage>
           tabs: [
             Tab(text: l10n.myRepositories),
             Tab(text: l10n.starredRepositories),
+            Tab(text: l10n.myPullRequests),
           ],
         ),
       ),
@@ -81,6 +83,7 @@ class _HomePageState extends State<HomePage>
         children: [
           _UserReposTab(username: _currentUser?.login ?? ''),
           _StarredReposTab(username: _currentUser?.login ?? ''),
+          const _PullRequestsTab(),
         ],
       ),
     );
@@ -525,6 +528,477 @@ class _StarredReposTabState extends State<_StarredReposTab>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Pull requests tab ────────────────────────────────────────────────────────
+
+class _PullRequestsTab extends StatefulWidget {
+  const _PullRequestsTab();
+
+  @override
+  State<_PullRequestsTab> createState() => _PullRequestsTabState();
+}
+
+class _PullRequestsTabState extends State<_PullRequestsTab>
+    with AutomaticKeepAliveClientMixin {
+  static const _pageSize = 30;
+
+  final _api = GitHubApiClient.instance;
+  List<PullRequestSearchItem> _items = [];
+  PullRequestSearchScope _scope = PullRequestSearchScope.authored;
+  PullRequestSearchState _state = PullRequestSearchState.open;
+  bool _loading = false;
+  bool _hasMore = true;
+  int _page = 1;
+  int _totalCount = 0;
+  String _error = '';
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPullRequests();
+  }
+
+  Future<void> _loadPullRequests({bool refresh = false}) async {
+    if (_loading) return;
+    if (refresh) {
+      _page = 1;
+      _hasMore = true;
+    }
+    final requestScope = _scope;
+    final requestState = _state;
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+
+    final result = await _api.searchPullRequests(
+      scope: _scope,
+      state: _state,
+      page: _page,
+      perPage: _pageSize,
+    );
+
+    if (!mounted) return;
+    if (requestScope != _scope || requestState != _state) return;
+
+    if (result.isSuccess) {
+      final data = result.data!;
+      final warning = data.incompleteResults
+          ? AppLocalizations.of(context).searchResultsIncomplete
+          : result.cacheWarning ?? '';
+      setState(() {
+        _loading = false;
+        _error = warning;
+        _totalCount = data.totalCount;
+        if (refresh || _page == 1) {
+          _items = data.items;
+        } else {
+          _items = [..._items, ...data.items];
+        }
+        _hasMore =
+            data.items.length >= _pageSize && _items.length < _totalCount;
+        _page++;
+      });
+    } else {
+      setState(() {
+        _loading = false;
+        _error = result.message ?? AppLocalizations.of(context).loadFailed;
+      });
+    }
+  }
+
+  void _switchScope(PullRequestSearchScope scope) {
+    if (scope == _scope) return;
+    setState(() {
+      _scope = scope;
+      _items = [];
+      _page = 1;
+      _hasMore = true;
+      _loading = false;
+    });
+    _loadPullRequests(refresh: true);
+  }
+
+  void _switchState(PullRequestSearchState state) {
+    if (state == _state) return;
+    setState(() {
+      _state = state;
+      _items = [];
+      _page = 1;
+      _hasMore = true;
+      _loading = false;
+    });
+    _loadPullRequests(refresh: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final l10n = AppLocalizations.of(context);
+
+    if (_loading && _items.isEmpty) {
+      return const RepoListSkeleton();
+    }
+    if (_error.isNotEmpty && _items.isEmpty) {
+      return _ErrorView(
+          message: _error, onRetry: () => _loadPullRequests(refresh: true));
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _loadPullRequests(refresh: true),
+      child: CustomScrollView(
+        key: const PageStorageKey<String>('home-pull-requests'),
+        slivers: [
+          SliverToBoxAdapter(
+            child: _PullRequestFilterBar(
+              scope: _scope,
+              state: _state,
+              totalCount: _totalCount,
+              onScopeChanged: _switchScope,
+              onStateChanged: _switchState,
+            ),
+          ),
+          if (_error.isNotEmpty)
+            SliverToBoxAdapter(child: CacheWarningBanner(message: _error)),
+          if (_items.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: Text(l10n.noPullRequests)),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  if (i >= _items.length) {
+                    if (_hasMore) _loadPullRequests();
+                    return _hasMore ? const _LoadMoreIndicator() : null;
+                  }
+                  return Column(
+                    children: [
+                      _PullRequestTile(item: _items[i]),
+                      if (i < _items.length - 1)
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                    ],
+                  );
+                },
+                childCount: _items.length + (_hasMore ? 1 : 0),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PullRequestFilterBar extends StatelessWidget {
+  const _PullRequestFilterBar({
+    required this.scope,
+    required this.state,
+    required this.totalCount,
+    required this.onScopeChanged,
+    required this.onStateChanged,
+  });
+
+  final PullRequestSearchScope scope;
+  final PullRequestSearchState state;
+  final int totalCount;
+  final ValueChanged<PullRequestSearchScope> onScopeChanged;
+  final ValueChanged<PullRequestSearchState> onStateChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: cs.outlineVariant, width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: PullRequestSearchScope.values.map((value) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _PullRequestScopeChip(
+                      label: _scopeLabel(l10n, value),
+                      selected: value == scope,
+                      onTap: () => onScopeChanged(value),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _PullRequestStateMenu(
+            state: state,
+            totalCount: totalCount,
+            onChanged: onStateChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _scopeLabel(
+    AppLocalizations l10n,
+    PullRequestSearchScope scope,
+  ) =>
+      switch (scope) {
+        PullRequestSearchScope.authored => l10n.createdByMe,
+        PullRequestSearchScope.reviewRequested => l10n.reviewRequested,
+        PullRequestSearchScope.involved => l10n.involvedByMe,
+      };
+}
+
+class _PullRequestScopeChip extends StatelessWidget {
+  const _PullRequestScopeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        height: 32,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected ? cs.primary : Colors.transparent,
+          border: Border.all(color: selected ? cs.primary : cs.outlineVariant),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            color: selected ? cs.onPrimary : cs.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PullRequestStateMenu extends StatelessWidget {
+  const _PullRequestStateMenu({
+    required this.state,
+    required this.totalCount,
+    required this.onChanged,
+  });
+
+  final PullRequestSearchState state;
+  final int totalCount;
+  final ValueChanged<PullRequestSearchState> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final cs = Theme.of(context).colorScheme;
+    return PopupMenuButton<PullRequestSearchState>(
+      onSelected: onChanged,
+      itemBuilder: (context) => PullRequestSearchState.values
+          .map(
+            (value) => PopupMenuItem(
+              value: value,
+              child: Row(
+                children: [
+                  if (value == state)
+                    Icon(Icons.check, size: 18, color: cs.primary)
+                  else
+                    const SizedBox(width: 18),
+                  const SizedBox(width: 8),
+                  Text(_stateLabel(l10n, value)),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          border: Border.all(color: cs.outlineVariant),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              totalCount > 0
+                  ? '${_stateLabel(l10n, state)} $totalCount'
+                  : _stateLabel(l10n, state),
+              style: TextStyle(fontSize: 12, color: cs.onSurface),
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.keyboard_arrow_down_rounded,
+                size: 16, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _stateLabel(
+    AppLocalizations l10n,
+    PullRequestSearchState state,
+  ) =>
+      switch (state) {
+        PullRequestSearchState.open => l10n.filterOpen,
+        PullRequestSearchState.closed => l10n.filterClosed,
+        PullRequestSearchState.all => l10n.filterAll,
+      };
+}
+
+class _PullRequestTile extends StatelessWidget {
+  const _PullRequestTile({required this.item});
+
+  final PullRequestSearchItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final metadataColor = repoMetadataColor(cs);
+    final repoName = '${item.owner}/${item.repo}';
+    final updatedText = _updatedTimeAgo(l10n, item.updatedAt);
+
+    return InkWell(
+      onTap: item.routePath.isEmpty ? null : () => context.push(item.routePath),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Icon(
+                Icons.call_merge,
+                size: 18,
+                color: item.isOpen
+                    ? Colors.green.shade600
+                    : Colors.purple.shade600,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (repoName != '/')
+                    Text(
+                      repoName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        '#${item.number}',
+                        style: TextStyle(fontSize: 12, color: metadataColor),
+                      ),
+                      if (item.userLogin.isNotEmpty)
+                        Text(
+                          item.userLogin,
+                          style: TextStyle(fontSize: 12, color: metadataColor),
+                        ),
+                      if (item.comments > 0)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.mode_comment_outlined,
+                                size: 13, color: metadataColor),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${item.comments}',
+                              style:
+                                  TextStyle(fontSize: 12, color: metadataColor),
+                            ),
+                          ],
+                        ),
+                      if (updatedText.isNotEmpty)
+                        Text(
+                          updatedText,
+                          style: TextStyle(fontSize: 12, color: metadataColor),
+                        ),
+                    ],
+                  ),
+                  if (item.labels.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 4,
+                      children: item.labels.take(3).map((label) {
+                        final color = Color(int.tryParse(
+                                  '0xFF${label['color'] as String? ?? ''}',
+                                ) ??
+                                0x22000000)
+                            // Flutter-OH does not support Color.withValues yet.
+                            // ignore: deprecated_member_use
+                            .withOpacity(0.22);
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            label['name'] as String? ?? '',
+                            style: const TextStyle(fontSize: 10),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

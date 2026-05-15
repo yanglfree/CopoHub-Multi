@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CopoHub Flutter 代码审查修复报告</title>
+  <style>
+    :root {
+      --bg: #f6f8fa;
+      --panel: #ffffff;
+      --text: #1f2328;
+      --muted: #59636e;
+      --border: #d0d7de;
+      --ok: #1a7f37;
+      --high: #bc4c00;
+      --medium: #9a6700;
+      --low: #1f6feb;
+      --code: #f6f8fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 32px 24px 56px; }
+    h1, h2, h3 { line-height: 1.25; margin: 0 0 14px; }
+    h1 { font-size: 32px; }
+    h2 { font-size: 22px; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    h3 { font-size: 18px; margin-top: 20px; }
+    p { margin: 8px 0; }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 16px 0;
+    }
+    .meta, .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .muted { color: var(--muted); }
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      vertical-align: middle;
+    }
+    .ok { background: var(--ok); }
+    .high { background: var(--high); }
+    .medium { background: var(--medium); }
+    .low { background: var(--low); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f6f8fa; font-weight: 700; }
+    tr:last-child td { border-bottom: 0; }
+    ul { margin: 8px 0 8px 22px; padding: 0; }
+    li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>CopoHub Flutter 代码审查修复报告</h1>
+  <div class="panel meta">
+    <div><strong>仓库</strong><br>/Users/liang/Documents/AI_CODE/CopoHub</div>
+    <div><strong>Flutter 工程</strong><br>/Users/liang/Documents/AI_CODE/CopoHub/flutter</div>
+    <div><strong>报告类型</strong><br>High / Medium 问题修复后状态</div>
+    <div><strong>Skill</strong><br>/Users/liang/.agents/skills/flutter-code-review/SKILL.md</div>
+  </div>
+
+  <section>
+    <h2>结论</h2>
+    <div class="panel">
+      <p>本轮已按上一份报告处理 High 和 Medium 项。High 项中的 app 级分析噪音和大文件 viewer 性能风险已落地修复；Medium 项中的日报 build 重算、diff intrinsic layout、branch picker shrinkWrap、API provider 边界也已处理或建立迁移边界。</p>
+      <p>Low 项没有按本次要求修复，仍保留为后续清理项，例如 <code>print</code>、Flutter-OH 兼容导致的 <code>withOpacity</code> analyzer info、以及格式漂移。</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>修复状态</h2>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>原级别</th><th>状态</th><th>改动位置</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>F-01</td>
+          <td><span class="badge high">High</span></td>
+          <td><span class="badge ok">已处理</span></td>
+          <td><code>flutter/analysis_options.yaml</code></td>
+          <td>排除本地 <code>webview_flutter_wkwebview</code> override package 的 <code>example/</code>、<code>test/</code>、<code>pigeons/</code> 和 package <code>pubspec.yaml</code>，避免 app 级分析被依赖包上下文污染。</td>
+        </tr>
+        <tr>
+          <td>F-02</td>
+          <td><span class="badge high">High</span></td>
+          <td><span class="badge ok">已处理</span></td>
+          <td><code>flutter/lib/pages/file_viewer/file_viewer_page.dart</code></td>
+          <td>大文件超过阈值时跳过整文件 syntax highlight 和整文档 <code>SelectableText.rich</code>，改用按行 lazy rendering；同时缓存行号和搜索所需的 line start offset。</td>
+        </tr>
+        <tr>
+          <td>F-03</td>
+          <td><span class="badge medium">Medium</span></td>
+          <td><span class="badge ok">已处理</span></td>
+          <td><code>flutter/lib/components/daily/daily_report_view.dart</code></td>
+          <td><code>DailyReportView</code> 从 stateless 改为 stateful，把 markdown 解析、repository ref 提取和 linkify 结果缓存到 report 变更边界，避免每次 build 重复执行 regex-heavy 转换。</td>
+        </tr>
+        <tr>
+          <td>F-04</td>
+          <td><span class="badge medium">Medium</span></td>
+          <td><span class="badge ok">已处理</span></td>
+          <td><code>flutter/lib/pages/commit/diff_file_detail_page.dart</code></td>
+          <td>移除每行 diff 的 <code>IntrinsicHeight</code>，改为普通 <code>Row</code> 和一致 line height，减少大 diff 列表的额外 layout pass。</td>
+        </tr>
+        <tr>
+          <td>F-05</td>
+          <td><span class="badge medium">Medium</span></td>
+          <td><span class="badge ok">已建立边界</span></td>
+          <td><code>flutter/lib/providers/api_provider.dart</code>, <code>flutter/lib/pages/file_viewer/file_viewer_page.dart</code></td>
+          <td>新增 API provider 边界，并把本轮重点修复的 file viewer 改为通过 provider 读取 <code>GitHubApiClient</code>。底层 singleton 仍作为默认实现保留，避免一次性大迁移破坏现有缓存、登录和服务生命周期。</td>
+        </tr>
+        <tr>
+          <td>F-06</td>
+          <td><span class="badge medium">Medium</span></td>
+          <td><span class="badge ok">已处理</span></td>
+          <td><code>flutter/lib/components/repository/branch_tag_picker_bottom_sheet.dart</code></td>
+          <td>移除已受 <code>Flexible</code> 约束的 branch list 上的 <code>shrinkWrap: true</code>，避免大分支列表打开弹窗时产生不必要的测量成本。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>验证结果</h2>
+    <div class="panel">
+      <ul>
+        <li><code>flutter test test</code>：通过，41 个测试 passed。</li>
+        <li><code>flutter analyze lib test</code>：无 error / warning；剩余 25 个 info，均属于本次未要求处理的 Low 类问题。</li>
+        <li><code>flutter analyze</code>：本地 override package 的 error 已清除；剩余为 app low info、vendored package info，以及根目录临时测试脚本 warning/info。</li>
+        <li><code>hvigorw assembleHap</code>：在 <code>flutter/ohos</code> 下通过，<code>BUILD SUCCESSFUL</code>；输出包含既有 Flutter-OH / ArkTS dependency warnings。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>剩余事项</h2>
+    <div class="panel">
+      <p>以下问题属于上一份报告中的 Low 项或后续架构迁移范围，本轮未展开：</p>
+      <ul>
+        <li><code>GitHubApiClient._handleDioError</code> 中的 <code>print</code> 可改为 debug/logger。</li>
+        <li><code>withOpacity</code> 的 analyzer deprecation info 需要继续服从 Flutter-OH 兼容规则，不能直接替换为 <code>withValues</code>。</li>
+        <li>全项目彻底迁移 singleton direct usage 到 provider/repository boundary 仍应分批进行，本轮已先建立边界并迁移重点路径。</li>
+        <li>根目录若继续保留临时 <code>test_*.dart</code> 脚本，可后续移动到工具目录或加入 analyzer exclude。</li>
+      </ul>
+    </div>
+  </section>
+</main>
+</body>
+</html>

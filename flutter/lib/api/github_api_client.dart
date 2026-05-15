@@ -5,6 +5,7 @@ import '../models/repository.dart';
 import '../models/repository_participation.dart';
 import '../models/github_org.dart';
 import '../models/pinned_repository.dart';
+import '../models/pull_request_search.dart';
 import '../services/app_info_service.dart';
 import '../utils/constants.dart';
 import '../utils/api_error_message.dart';
@@ -1414,6 +1415,27 @@ query($login: String!) {
         },
         parser: (d) => d as Map<String, dynamic>,
       );
+
+  Future<ApiResponse<PullRequestSearchResult>> searchPullRequests({
+    PullRequestSearchScope scope = PullRequestSearchScope.authored,
+    PullRequestSearchState state = PullRequestSearchState.open,
+    int page = 1,
+    int perPage = 30,
+  }) {
+    final query = PullRequestSearchQuery(scope: scope, state: state).value;
+    return _get<PullRequestSearchResult>(
+      '/search/issues',
+      params: {
+        'q': query,
+        'sort': 'updated',
+        'order': 'desc',
+        'page': page,
+        'per_page': perPage,
+      },
+      parser: (d) =>
+          PullRequestSearchResult.fromJson(d as Map<String, dynamic>),
+    );
+  }
 
   /// Returns `{'issue_count': int, 'pr_count': int}` for the given repo.
   /// Uses the search API (counts all states combined).

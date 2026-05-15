@@ -201,7 +201,9 @@ String linkifyDailyReportRepositories(
     });
 
     final fullNamePattern = RegExp(
-      r'(^|[^`\[\]\w./:-])(' + RegExp.escape(ref.fullName) + r')(?=$|[^`\w/:-])',
+      r'(^|[^`\[\]\w./:-])(' +
+          RegExp.escape(ref.fullName) +
+          r')(?=$|[^`\w/:-])',
       multiLine: true,
     );
     linked = linked.replaceAllMapped(fullNamePattern, (match) {
@@ -310,14 +312,56 @@ Map<String, dynamic> dailyReportWithRepositoryData(
   };
 }
 
-class DailyReportView extends StatelessWidget {
+class _LinkedDailyReportContent {
+  const _LinkedDailyReportContent({
+    required this.summary,
+    required this.topics,
+    required this.langSummaries,
+    required this.topRepos,
+    required this.sections,
+    required this.linkedIntroduction,
+    required this.linkedSections,
+    required this.linkedSummary,
+  });
+
+  final String summary;
+  final List<String> topics;
+  final List<MapEntry<String, dynamic>> langSummaries;
+  final List<Map<String, dynamic>> topRepos;
+  final DailyReportSections sections;
+  final String linkedIntroduction;
+  final List<DailyReportSection> linkedSections;
+  final String linkedSummary;
+}
+
+class DailyReportView extends StatefulWidget {
   const DailyReportView({super.key, required this.report, this.onShare});
 
   final Map<String, dynamic> report;
   final VoidCallback? onShare;
 
   @override
-  Widget build(BuildContext context) {
+  State<DailyReportView> createState() => _DailyReportViewState();
+}
+
+class _DailyReportViewState extends State<DailyReportView> {
+  late _LinkedDailyReportContent _content;
+
+  @override
+  void initState() {
+    super.initState();
+    _content = _buildContent(widget.report);
+  }
+
+  @override
+  void didUpdateWidget(covariant DailyReportView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.report, widget.report)) {
+      _content = _buildContent(widget.report);
+    }
+  }
+
+  _LinkedDailyReportContent _buildContent(Map<String, dynamic> report) {
     final summary = report['summary'] as String? ?? '';
     final topics = (report['topics'] as List<dynamic>? ?? [])
         .map((e) => e as String)
@@ -347,45 +391,62 @@ class DailyReportView extends StatelessWidget {
         .toList();
     final linkedSummary = linkifyDailyReportRepositories(summary, repoRefs);
 
+    return _LinkedDailyReportContent(
+      summary: summary,
+      topics: topics,
+      langSummaries: langSummaries,
+      topRepos: topRepos,
+      sections: sections,
+      linkedIntroduction: linkedIntroduction,
+      linkedSections: linkedSections,
+      linkedSummary: linkedSummary,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
         _ReportHeader(
-          title: sections.title.isEmpty ? 'GitHub Trending 日报' : sections.title,
-          date: report['date'] as String?,
-          language: report['language'] as String?,
-          updatedAt: report['updated_at'] as String?,
-          topics: topics,
-          onShare: onShare,
+          title: _content.sections.title.isEmpty
+              ? 'GitHub Trending 日报'
+              : _content.sections.title,
+          date: widget.report['date'] as String?,
+          language: widget.report['language'] as String?,
+          updatedAt: widget.report['updated_at'] as String?,
+          topics: _content.topics,
+          onShare: widget.onShare,
         ),
-        if (linkedIntroduction.isNotEmpty) ...[
+        if (_content.linkedIntroduction.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _ArticleLead(markdown: linkedIntroduction),
+          _ArticleLead(markdown: _content.linkedIntroduction),
         ],
-        if (langSummaries.isNotEmpty) ...[
+        if (_content.langSummaries.isNotEmpty) ...[
           const SizedBox(height: 20),
           const _SectionTitle(icon: Icons.auto_graph, title: '语言动态'),
           const SizedBox(height: 10),
-          _LanguageSummaryRail(entries: langSummaries),
+          _LanguageSummaryRail(entries: _content.langSummaries),
         ],
-        if (topRepos.isNotEmpty) ...[
+        if (_content.topRepos.isNotEmpty) ...[
           const SizedBox(height: 20),
           const _SectionTitle(icon: Icons.star_border, title: '精选仓库'),
           const SizedBox(height: 10),
-          _TopRepoRail(repos: topRepos.take(5).toList()),
+          _TopRepoRail(repos: _content.topRepos.take(5).toList()),
         ],
-        if (linkedSections.isNotEmpty) ...[
+        if (_content.linkedSections.isNotEmpty) ...[
           const SizedBox(height: 20),
-          for (var i = 0; i < linkedSections.length; i++) ...[
+          for (var i = 0; i < _content.linkedSections.length; i++) ...[
             _ArticleSection(
               index: i + 1,
-              section: linkedSections[i],
+              section: _content.linkedSections[i],
             ),
-            if (i != linkedSections.length - 1) const SizedBox(height: 14),
+            if (i != _content.linkedSections.length - 1)
+              const SizedBox(height: 14),
           ],
-        ] else if (summary.isNotEmpty) ...[
+        ] else if (_content.summary.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _ReportMarkdown(markdown: linkedSummary),
+          _ReportMarkdown(markdown: _content.linkedSummary),
         ],
       ],
     );
@@ -448,7 +509,8 @@ class _ReportHeader extends StatelessWidget {
               ),
               if (language != null && language!.isNotEmpty)
                 _MetaPill(label: language!.toUpperCase()),
-              if (onShare != null) ...[                const SizedBox(width: 6),
+              if (onShare != null) ...[
+                const SizedBox(width: 6),
                 InkWell(
                   onTap: onShare,
                   borderRadius: BorderRadius.circular(6),
